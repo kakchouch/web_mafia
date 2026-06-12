@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Loup-Garou</title>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+
+<!-- ===================== ÉCRAN SETUP ===================== -->
+<div id="setup-screen" class="screen active">
+  <div class="setup-card">
+    <h1>🐺 Loup-Garou</h1>
+    <p class="subtitle">Un village, des secrets, et la nuit qui tombe…</p>
+
+    <div class="mode-toggle">
+      <button id="btn-mode-player" class="mode-btn active" onclick="setMode('player')">🎭 Joueur</button>
+      <button id="btn-mode-spectator" class="mode-btn" onclick="setMode('spectator')">👁 Spectateur</button>
+    </div>
+
+    <div id="player-fields">
+      <label>Votre prénom
+        <input type="text" id="input-name" placeholder="ex: Marie" maxlength="20"/>
+      </label>
+
+      <label>Votre rôle préféré
+        <select id="input-role">
+          <option value="random">🎲 Aléatoire</option>
+          <option value="villageois">👨‍🌾 Villageois</option>
+          <option value="loup-garou">🐺 Loup-Garou</option>
+          <option value="voyante">🔮 Voyante</option>
+          <option value="sorciere">🧙 Sorcière</option>
+          <option value="chasseur">🏹 Chasseur</option>
+        </select>
+      </label>
+    </div>
+
+    <label>Nombre de joueurs
+      <div class="slider-row">
+        <input type="range" id="input-count" min="4" max="8" value="6"
+               oninput="document.getElementById('count-display').textContent = this.value"/>
+        <span id="count-display">6</span>
+      </div>
+    </label>
+
+    <button id="btn-start" class="btn-primary" onclick="startGame()">Commencer la partie</button>
+
+    <button class="btn-link" onclick="document.getElementById('rules-modal').classList.add('open')">
+      📖 Règles du jeu
+    </button>
+  </div>
+</div>
+
+<!-- ===================== ÉCRAN JEU ===================== -->
+<div id="game-screen" class="screen">
+  <header class="game-header">
+    <span id="header-phase">Nuit 1</span>
+    <span id="header-role"></span>
+    <div class="header-controls">
+      <button id="btn-mute" onclick="TTS.toggleMute()" title="Activer/Couper le son">🔊</button>
+      <span id="voice-status" class="voice-status"></span>
+    </div>
+  </header>
+
+  <div class="game-body">
+    <!-- Log des événements -->
+    <div class="log-panel">
+      <div id="event-log"></div>
+      <div id="typing-indicator" class="typing hidden">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <!-- Sidebar joueurs -->
+    <aside class="players-panel">
+      <h3>Vivants</h3>
+      <ul id="alive-list"></ul>
+      <h3>Morts</h3>
+      <ul id="dead-list"></ul>
+    </aside>
+  </div>
+
+  <!-- Panneau d'action -->
+  <div id="action-panel" class="action-panel hidden"></div>
+</div>
+
+<!-- ===================== ÉCRAN FIN ===================== -->
+<div id="gameover-screen" class="screen">
+  <div class="gameover-card">
+    <div id="gameover-icon"></div>
+    <h2 id="gameover-title"></h2>
+    <p id="gameover-text"></p>
+    <button class="btn-primary" onclick="location.reload()">Nouvelle partie</button>
+  </div>
+</div>
+
+<!-- ===================== MODALE RÈGLES ===================== -->
+<div id="rules-modal" class="modal-overlay" onclick="this.classList.remove('open')">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <h2>📖 Les rôles</h2>
+    <div id="rules-content">Chargement…</div>
+    <button class="btn-link" onclick="document.getElementById('rules-modal').classList.remove('open')">Fermer</button>
+  </div>
+</div>
+
+<script src="/static/js/tts.js"></script>
+<script src="/static/js/game.js"></script>
+</body>
+</html>
