@@ -38,17 +38,23 @@
 
     <label>Nombre de joueurs
       <div class="slider-row">
-        <input type="range" id="input-count" min="4" max="8" value="6"
+        <input type="range" id="input-count"
+               min="{{ config.PLAYER_COUNT_MIN }}"
+               max="{{ config.PLAYER_COUNT_MAX }}"
+               value="{{ config.PLAYER_COUNT_DEFAULT }}"
                oninput="document.getElementById('count-display').textContent = this.value"/>
-        <span id="count-display">6</span>
+        <span id="count-display">{{ config.PLAYER_COUNT_DEFAULT }}</span>
       </div>
     </label>
 
     <button id="btn-start" class="btn-primary" onclick="startGame()">Commencer la partie</button>
 
-    <button class="btn-link" onclick="document.getElementById('rules-modal').classList.add('open')">
-      📖 Règles du jeu
-    </button>
+    <div class="setup-links">
+      <button class="btn-link" onclick="document.getElementById('rules-modal').classList.add('open')">
+        📖 Règles du jeu
+      </button>
+      <button class="btn-link" onclick="openSettings()">⚙️ Réglages</button>
+    </div>
   </div>
 </div>
 
@@ -59,6 +65,13 @@
     <span id="header-role"></span>
     <div class="header-controls">
       <button id="btn-mute" onclick="TTS.toggleMute()" title="Activer/Couper le son">🔊</button>
+      <label class="speed-label" title="Vitesse des voix">
+        🐢
+        <input type="range" id="speed-slider" min="0.5" max="2.5" step="0.25" value="1.0"
+               oninput="TTS.setSpeed(this.value); document.getElementById('speed-val').textContent = parseFloat(this.value).toFixed(2) + '×'"/>
+        🐇
+        <span id="speed-val">1.00×</span>
+      </label>
       <span id="voice-status" class="voice-status"></span>
     </div>
   </header>
@@ -95,6 +108,18 @@
   </div>
 </div>
 
+<!-- ===================== MODALE RÉGLAGES ===================== -->
+<div id="settings-modal" class="modal-overlay" onclick="this.classList.remove('open')">
+  <div class="modal-card settings-card" onclick="event.stopPropagation()">
+    <h2>⚙️ Réglages</h2>
+    <div id="settings-content">Chargement…</div>
+    <div class="settings-actions">
+      <button class="btn-primary" onclick="saveSettings()">💾 Sauvegarder</button>
+      <button class="btn-link" onclick="document.getElementById('settings-modal').classList.remove('open')">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== MODALE RÈGLES ===================== -->
 <div id="rules-modal" class="modal-overlay" onclick="this.classList.remove('open')">
   <div class="modal-card" onclick="event.stopPropagation()">
@@ -104,7 +129,140 @@
   </div>
 </div>
 
+<!-- ===================== BARRE OLLAMA ===================== -->
+<div id="ollama-bar">
+  <span class="ollama-label">🦙 ollama ps</span>
+  <pre id="ollama-output">…</pre>
+</div>
+
 <script src="/static/js/tts.js"></script>
 <script src="/static/js/game.js"></script>
+<script>
+// ===================== RÉGLAGES =====================
+const SETTINGS_SCHEMA = [
+  { section: "Modèle IA" },
+  { key: "OLLAMA_MODEL",    label: "Modèle Ollama",   type: "text" },
+  { key: "OLLAMA_BASE_URL", label: "URL Ollama",       type: "text" },
+  { key: "OLLAMA_CTX_SIZE", label: "Contexte (tokens)", type: "number", min: 2048, max: 131072 },
+
+  { section: "Partie" },
+  { key: "PLAYER_COUNT_MIN",     label: "Joueurs min",     type: "number", min:2, max:8 },
+  { key: "PLAYER_COUNT_MAX",     label: "Joueurs max",     type: "number", min:4, max:12 },
+  { key: "PLAYER_COUNT_DEFAULT", label: "Joueurs défaut",  type: "number", min:2, max:12 },
+  { key: "DISCUSSION_PASSES",    label: "Passes discussion",type: "number", min:1, max:5 },
+
+  { section: "Timeouts (secondes)" },
+  { key: "TTS_ACK_TIMEOUT",      label: "Attente TTS ACK",  type: "number", min:5,  max:120 },
+  { key: "HUMAN_CHAT_TIMEOUT_1", label: "Chat 1er tour",    type: "number", min:10, max:300 },
+  { key: "HUMAN_CHAT_TIMEOUT_2", label: "Chat 2e tour",     type: "number", min:10, max:300 },
+
+  { section: "IA — Tokens max" },
+  { key: "AI_NARRATION_MAX_TOKENS", label: "Narration",   type: "number", min:50, max:500 },
+  { key: "AI_DIALOGUE_MAX_TOKENS",  label: "Dialogue PNJ",type: "number", min:30, max:300 },
+  { key: "AI_VOTE_MAX_TOKENS",      label: "Vote PNJ",    type: "number", min:5,  max:50  },
+  { key: "AI_WOLF_MAX_TOKENS",      label: "Loups nuit",  type: "number", min:20, max:200 },
+
+  { section: "IA — Température" },
+  { key: "AI_NARRATION_TEMPERATURE", label: "Narration",   type: "range", min:0, max:1, step:0.05 },
+  { key: "AI_DIALOGUE_TEMPERATURE",  label: "Dialogue PNJ",type: "range", min:0, max:1, step:0.05 },
+  { key: "AI_VOTE_TEMPERATURE",      label: "Vote PNJ",    type: "range", min:0, max:1, step:0.05 },
+  { key: "AI_WOLF_TEMPERATURE",      label: "Loups nuit",  type: "range", min:0, max:1, step:0.05 },
+
+  { section: "TTS Kokoro" },
+  { key: "TTS_NARRATOR_SPEED", label: "Vitesse narrateur", type: "range", min:0.3, max:2, step:0.05 },
+];
+
+let _currentConfig = {};
+
+async function openSettings() {
+  const res = await fetch('/api/config');
+  _currentConfig = await res.json();
+
+  const container = document.getElementById('settings-content');
+  container.innerHTML = '';
+
+  SETTINGS_SCHEMA.forEach(item => {
+    if (item.section) {
+      const h = document.createElement('h3');
+      h.className = 'settings-section';
+      h.textContent = item.section;
+      container.appendChild(h);
+      return;
+    }
+    const val = _currentConfig[item.key] ?? '';
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+
+    const lbl = document.createElement('label');
+    lbl.textContent = item.label;
+    lbl.htmlFor = `cfg-${item.key}`;
+
+    const right = document.createElement('div');
+    right.className = 'settings-input-wrap';
+
+    const inp = document.createElement('input');
+    inp.id = `cfg-${item.key}`;
+    inp.type = item.type === 'range' ? 'range' : (item.type || 'text');
+    inp.value = val;
+    if (item.min != null) inp.min = item.min;
+    if (item.max != null) inp.max = item.max;
+    if (item.step != null) inp.step = item.step;
+
+    if (item.type === 'range') {
+      const display = document.createElement('span');
+      display.className = 'range-val';
+      display.textContent = parseFloat(val).toFixed(2);
+      inp.oninput = () => display.textContent = parseFloat(inp.value).toFixed(2);
+      right.appendChild(inp);
+      right.appendChild(display);
+    } else {
+      right.appendChild(inp);
+    }
+
+    row.appendChild(lbl);
+    row.appendChild(right);
+    container.appendChild(row);
+  });
+
+  document.getElementById('settings-modal').classList.add('open');
+}
+
+async function saveSettings() {
+  const payload = {};
+  SETTINGS_SCHEMA.forEach(item => {
+    if (!item.key) return;
+    const inp = document.getElementById(`cfg-${item.key}`);
+    if (!inp) return;
+    payload[item.key] = item.type === 'number' ? Number(inp.value)
+                       : item.type === 'range'  ? parseFloat(inp.value)
+                       : inp.value;
+  });
+  await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  document.getElementById('settings-modal').classList.remove('open');
+  // Mettre à jour le slider joueurs
+  const countEl = document.getElementById('input-count');
+  if (countEl) {
+    if (payload.PLAYER_COUNT_MIN != null) countEl.min = payload.PLAYER_COUNT_MIN;
+    if (payload.PLAYER_COUNT_MAX != null) countEl.max = payload.PLAYER_COUNT_MAX;
+    if (payload.PLAYER_COUNT_DEFAULT != null) {
+      countEl.value = payload.PLAYER_COUNT_DEFAULT;
+      document.getElementById('count-display').textContent = payload.PLAYER_COUNT_DEFAULT;
+    }
+  }
+}
+</script>
+<script>
+(function pollOllama() {
+  fetch('/api/ollama/ps')
+    .then(r => r.json())
+    .then(d => { document.getElementById('ollama-output').textContent = d.output; })
+    .catch(() => { document.getElementById('ollama-output').textContent = 'erreur'; })
+    .finally(() => setTimeout(pollOllama, 5000));
+})();
+</script>
 </body>
 </html>

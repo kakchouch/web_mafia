@@ -1,120 +1,189 @@
-// TTS — Web Speech API, voix françaises, voix distinctes par joueur
+// TTS — Kokoro backend via /api/tts
+// Règles :
+//  - Une seule voix à la fois (file FIFO stricte)
+//  - Narration prioritaire : coupe l'audio en cours immédiatement
+//  - Après chaque dialogue PNJ : envoie un ACK au backend pour le synchroniser
+//  - Pause de 500 ms entre chaque prise de parole
 
 const TTS = (() => {
   let muted = false;
   const queue = [];
-  let speaking = false;
+  let playing = false;
 
-  // playerId -> { voice, pitch, rate }
-  const playerVoices = {};
-  let frVoices = [];
-  let voicesReady = false;
+  // Compteur de génération : invalide les callbacks d'audio périmés
+  let generation = 0;
 
-  function loadVoices() {
-    const all = speechSynthesis.getVoices();
-    frVoices = all.filter(v => v.lang.startsWith('fr'));
-    if (frVoices.length === 0) frVoices = all; // fallback
-    voicesReady = frVoices.length > 0;
+  // Référence à l'Audio en cours pour pouvoir le couper
+  let currentAudio = null;
+
+  // Multiplicateur de vitesse global (0.5 – 2.5)
+  let speedMultiplier = 1.0;
+
+  // playerId -> { character_index } ou { is_narrator: true }
+  const playerConfig = {};
+
+  // ---------------------------------------------------------------------------
+  // Init (appelé après /api/game/start)
+  // ---------------------------------------------------------------------------
+  function assignVoices(players) {
+    players.forEach(p => {
+      if (p.is_human) {
+        playerConfig[p.id] = { character_index: null };
+      } else {
+        playerConfig[p.id] = { character_index: p.voice_index, gender: p.gender || 'm' };
+      }
+    });
+    playerConfig['narrator'] = { is_narrator: true };
 
     const statusEl = document.getElementById('voice-status');
-    if (statusEl) {
-      statusEl.textContent = voicesReady
-        ? `${frVoices.length} voix FR`
-        : 'Voix par défaut';
-    }
+    if (statusEl) statusEl.textContent = 'Kokoro TTS';
   }
 
-  // Appel au démarrage du jeu avec la liste des joueurs PNJ
-  function assignVoices(players) {
-    loadVoices();
+  // ---------------------------------------------------------------------------
+  // File d'attente
+  // ---------------------------------------------------------------------------
+  function _enqueue(text, config, priority = false) {
+    if (muted || !text || !text.trim()) return;
 
-    // Narrateur : voix 0, pitch grave
-    playerVoices['narrator'] = {
-      voice: frVoices[0] || null,
-      pitch: 0.65,
-      rate: 0.82,
-    };
+    const item = { text: text.trim(), config };
 
-    // Chaque joueur reçoit une combinaison unique
-    players.forEach((p, i) => {
-      const voiceIndex = i % Math.max(frVoices.length, 1);
-      const pitch = 0.75 + ((i * 17) % 55) / 100;   // 0.75 – 1.30
-      const rate  = 0.88 + ((i * 11) % 22) / 100;   // 0.88 – 1.10
-
-      playerVoices[p.id] = {
-        voice: frVoices[voiceIndex] || frVoices[0] || null,
-        pitch,
-        rate,
-      };
-    });
-  }
-
-  function _speak(text, voiceConfig, priority = false) {
-    if (muted) return;
-    const item = { text, voiceConfig, priority };
     if (priority) {
-      speechSynthesis.cancel();
+      // Couper immédiatement l'audio en cours
+      generation++;
+      if (currentAudio) {
+        currentAudio.onended = null;
+        currentAudio.onerror = null;
+        try { currentAudio.pause(); } catch (_) {}
+        currentAudio = null;
+      }
+      // Vider la file, mettre la narration en tête
       queue.length = 0;
       queue.unshift(item);
+      playing = false;  // forcer la relance
     } else {
       queue.push(item);
     }
-    if (!speaking) _next();
+
+    if (!playing) _next();
   }
 
-  function _next() {
-    if (queue.length === 0) { speaking = false; return; }
-    speaking = true;
-    const { text, voiceConfig } = queue.shift();
+  async function _next() {
+    if (queue.length === 0) { playing = false; return; }
+    playing = true;
 
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = 'fr-FR';
-    if (voiceConfig) {
-      if (voiceConfig.voice) utt.voice = voiceConfig.voice;
-      if (voiceConfig.pitch !== undefined) utt.pitch = voiceConfig.pitch;
-      if (voiceConfig.rate  !== undefined) utt.rate  = voiceConfig.rate;
+    const { text, config } = queue.shift();
+    const myGen = ++generation;
+
+    try {
+      const body = { text, speed_multiplier: speedMultiplier };
+      if (config.is_narrator) {
+        body.is_narrator = true;
+      } else if (config.character_index != null) {
+        body.character_index = config.character_index;
+        body.gender = config.gender || 'm';
+      }
+
+      const resp = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      // Callback périmé ? (une narration prioritaire est arrivée entre-temps)
+      if (generation !== myGen) return;
+      if (!resp.ok) { _nextWithPause(myGen); return; }
+
+      const blob = await resp.blob();
+      if (generation !== myGen) return;
+
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      currentAudio = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        currentAudio = null;
+        if (generation !== myGen) return;  // périmé
+        // ACK backend si ce dialogue en avait besoin
+        if (config.needs_ack) {
+          fetch('/api/tts/ack', { method: 'POST' }).catch(() => {});
+        }
+        _nextWithPause(myGen);
+      };
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        currentAudio = null;
+        if (generation !== myGen) return;
+        if (config.needs_ack) {
+          fetch('/api/tts/ack', { method: 'POST' }).catch(() => {});
+        }
+        _nextWithPause(myGen);
+      };
+
+      await audio.play();
+
+    } catch (_) {
+      currentAudio = null;
+      if (generation !== myGen) return;
+      if (config.needs_ack) {
+        fetch('/api/tts/ack', { method: 'POST' }).catch(() => {});
+      }
+      _nextWithPause(myGen);
     }
-
-    utt.onend = () => _next();
-    utt.onerror = () => _next();
-
-    speechSynthesis.speak(utt);
   }
 
+  // Pause de 500 ms entre les prises de parole
+  function _nextWithPause(myGen) {
+    setTimeout(() => {
+      if (generation !== myGen) return;
+      _next();
+    }, 500);
+  }
+
+  // ---------------------------------------------------------------------------
+  // API publique
+  // ---------------------------------------------------------------------------
   function speakNarration(text) {
-    _speak(text, playerVoices['narrator'] || null, true);
+    // Prioritaire — interrompt tout
+    _enqueue(text, { is_narrator: true }, true);
   }
 
-  function speakNPC(text, playerId, speakerName) {
-    const cfg = playerVoices[playerId] || null;
-    _speak(text, cfg, false);
+  function speakNPC(text, playerId) {
+    const cfg = { ...(playerConfig[playerId] || { character_index: 0 }), needs_ack: true };
+    _enqueue(text, cfg, false);
+  }
+
+  function speakWolf(text, playerId) {
+    // Dialogues loups : ACK aussi (backend attend)
+    const cfg = { ...(playerConfig[playerId] || { character_index: 0 }), needs_ack: true };
+    _enqueue(text, cfg, false);
   }
 
   function speakSecret(text) {
-    // Message privé, chuchoté (pitch haut, rate lent)
-    _speak(text, { voice: frVoices[0] || null, pitch: 1.4, rate: 0.75 }, false);
+    _enqueue(text, { is_narrator: true }, false);
+  }
+
+  function setSpeed(multiplier) {
+    speedMultiplier = Math.max(0.5, Math.min(2.5, parseFloat(multiplier) || 1.0));
   }
 
   function toggleMute() {
     muted = !muted;
     const btn = document.getElementById('btn-mute');
     if (muted) {
-      speechSynthesis.cancel();
+      generation++;
       queue.length = 0;
-      speaking = false;
+      playing = false;
+      if (currentAudio) {
+        try { currentAudio.pause(); } catch (_) {}
+        currentAudio = null;
+      }
       if (btn) btn.textContent = '🔇';
     } else {
       if (btn) btn.textContent = '🔊';
     }
   }
 
-  // Certains navigateurs chargent les voix de façon asynchrone
-  if (typeof speechSynthesis !== 'undefined') {
-    if (speechSynthesis.onvoiceschanged !== undefined) {
-      speechSynthesis.onvoiceschanged = loadVoices;
-    }
-    loadVoices();
-  }
-
-  return { assignVoices, speakNarration, speakNPC, speakSecret, toggleMute };
+  return { assignVoices, speakNarration, speakNPC, speakWolf, speakSecret, toggleMute, setSpeed };
 })();

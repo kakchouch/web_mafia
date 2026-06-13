@@ -112,10 +112,10 @@ function _handleEvent(evt) {
     case 'wolf_private':
       if (evt.speaker) {
         _appendLog(`🐺 <span class="speaker">${evt.speaker}</span> (loups) : ${evt.text}`, 'wolf-private');
+        TTS.speakWolf(evt.text, evt.player_id || 'wolf');
       } else {
         _appendLog(`🐺 ${evt.text}`, 'wolf-private');
       }
-      if (evt.speaker) TTS.speakNPC(evt.text, evt.player_id || 'wolf', evt.speaker);
       break;
 
     case 'role_reveal':

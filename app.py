@@ -10,8 +10,10 @@ from flask import Flask, Response, jsonify, render_template, request
 
 load_dotenv()
 load_dotenv("api.secret")
+load_dotenv("config.env")
 
 import game.state as gs
+import game.config as gcfg
 from game.roles import FRENCH_NAMES, ROLE_CONFIGS, ROLE_POOLS
 from game.state import GameState, NPCMemory, Player
 from game.phases import run_night
@@ -41,8 +43,8 @@ def _build_game(player_name: str, role_choice: str, player_count: int, mode: str
     else:
         human_role = None
 
-    # Noms français distincts
-    names = random.sample(FRENCH_NAMES, player_count - (1 if mode == "player" else 0))
+    # Noms français distincts (FRENCH_NAMES est un dict {nom: genre})
+    names = random.sample(list(FRENCH_NAMES.keys()), player_count - (1 if mode == "player" else 0))
 
     players: list[Player] = []
 
@@ -97,7 +99,23 @@ def _build_game(player_name: str, role_choice: str, player_count: int, mode: str
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", config=gcfg.all_values())
+
+
+@app.route("/api/config", methods=["GET"])
+def get_config():
+    return jsonify(gcfg.all_values())
+
+
+@app.route("/api/config", methods=["POST"])
+def set_config():
+    data = request.get_json() or {}
+    gcfg.update(data)
+    gcfg.save()
+    # Invalider le client IA si l'URL ou le modèle a changé
+    from game import ai_director
+    ai_director.reset_client()
+    return jsonify({"ok": True, "config": gcfg.all_values()})
 
 
 @app.route("/api/game/start", methods=["POST"])
@@ -105,7 +123,10 @@ def start_game():
     data = request.get_json() or {}
     player_name = str(data.get("player_name", "Joueur")).strip() or "Joueur"
     role_choice = data.get("role_choice", "random")
-    player_count = max(4, min(8, int(data.get("player_count", 6))))
+    player_count = max(
+        int(gcfg.get("PLAYER_COUNT_MIN")),
+        min(int(gcfg.get("PLAYER_COUNT_MAX")), int(data.get("player_count", gcfg.get("PLAYER_COUNT_DEFAULT")))),
+    )
     mode = data.get("mode", "player")
 
     if role_choice not in ROLE_CONFIGS:
@@ -120,6 +141,23 @@ def start_game():
     t.start()
 
     human = state.get_human()
+    # Attribuer un index de voix à chaque PNJ dans le pool genré correspondant
+    male_idx = 0
+    female_idx = 0
+    players_out = []
+    for p in state.players:
+        entry = {"id": p.id, "name": p.name, "is_human": p.is_human}
+        if not p.is_human:
+            gender = FRENCH_NAMES.get(p.name, "m")
+            entry["gender"] = gender
+            if gender == "f":
+                entry["voice_index"] = female_idx
+                female_idx += 1
+            else:
+                entry["voice_index"] = male_idx
+                male_idx += 1
+        players_out.append(entry)
+
     return jsonify({
         "ok": True,
         "mode": mode,
@@ -127,10 +165,7 @@ def start_game():
         "your_role_label": ROLE_CONFIGS[human.role]["label"] if human else None,
         "your_role_emoji": ROLE_CONFIGS[human.role]["emoji"] if human else None,
         "your_name": human.name if human else None,
-        "players": [
-            {"id": p.id, "name": p.name, "is_human": p.is_human}
-            for p in state.players
-        ],
+        "players": players_out,
     })
 
 
@@ -186,6 +221,58 @@ def take_action():
     if not ok:
         return jsonify({"error": "no_pending_action"}), 400
     return jsonify({"ok": True})
+
+
+@app.route("/api/tts/ack", methods=["POST"])
+def tts_ack():
+    if gs.GAME:
+        gs.GAME.tts_ack_event.set()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/tts", methods=["POST"])
+def tts_synthesize():
+    from game.tts_engine import synthesize, is_ready
+    if not is_ready():
+        return jsonify({"error": "Modèles Kokoro non trouvés. Lancez : python download_models.py"}), 503
+
+    data = request.get_json() or {}
+    text = str(data.get("text", "")).strip()
+    if not text:
+        return "", 204
+
+    char_index = data.get("character_index")   # int ou None
+    is_narrator = bool(data.get("is_narrator", False))
+    speed_multiplier = float(data.get("speed_multiplier", 1.0))
+    gender = str(data.get("gender", "m"))
+
+    try:
+        wav = synthesize(
+            text,
+            character_index=int(char_index) if char_index is not None else None,
+            is_narrator=is_narrator,
+            speed_multiplier=speed_multiplier,
+            gender=gender,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return Response(wav, mimetype="audio/wav")
+
+
+@app.route("/api/ollama/ps")
+def ollama_ps():
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["ollama", "ps"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return jsonify({"ok": True, "output": r.stdout.strip() or "(aucun modèle chargé)"})
+    except FileNotFoundError:
+        return jsonify({"ok": False, "output": "ollama introuvable dans le PATH"})
+    except Exception as e:
+        return jsonify({"ok": False, "output": str(e)})
 
 
 @app.route("/api/roles_info")

@@ -38,9 +38,12 @@ class GameState:
         self.winner: Optional[str] = None
         self.npc_memories: dict[str, NPCMemory] = {}
         self._lock = threading.Lock()
+        self.tts_ack_event = threading.Event()
 
     def emit(self, event: dict):
         with self._lock:
+            event.setdefault("phase", self.phase)
+            event.setdefault("round", self.round)
             self.event_log.append(event)
 
     def alive_players(self) -> list[Player]:

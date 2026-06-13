@@ -215,6 +215,65 @@ input[type="range"] {
   opacity: 0.5;
 }
 
+/* ===== BARRE OLLAMA ===== */
+#ollama-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #0a0a14;
+  border-top: 1px solid var(--surface2);
+  padding: 0.3rem 1rem;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  z-index: 1000;
+  font-family: var(--font-sans);
+}
+
+.ollama-label {
+  font-size: 0.7rem;
+  color: var(--gold);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#ollama-output {
+  font-size: 0.68rem;
+  color: #7aad7a;
+  font-family: 'Consolas', 'Courier New', monospace;
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Compenser la barre fixe pour ne pas couper le contenu */
+body { padding-bottom: 2.5rem; }
+
+.speed-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text);
+  opacity: 0.8;
+  user-select: none;
+}
+
+.speed-label input[type="range"] {
+  width: 90px;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+#speed-val {
+  font-size: 0.75rem;
+  color: var(--gold);
+  min-width: 3rem;
+  text-align: right;
+}
+
 .game-body {
   flex: 1;
   display: grid;
@@ -543,6 +602,70 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.settings-card { max-width: 640px; }
+
+.settings-section {
+  color: var(--gold);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 0.75rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--surface2);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.settings-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.settings-row input[type="text"],
+.settings-row input[type="number"] {
+  background: var(--bg);
+  border: 1px solid var(--surface2);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  width: 140px;
+}
+
+.settings-row input[type="range"] {
+  width: 110px;
+  accent-color: var(--gold);
+}
+
+.range-val {
+  font-size: 0.78rem;
+  color: var(--gold);
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.setup-links {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
 }
 
 .modal-card h2 {

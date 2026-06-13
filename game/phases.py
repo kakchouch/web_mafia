@@ -1,9 +1,9 @@
 from __future__ import annotations
 import random
-import time
 from typing import TYPE_CHECKING
 
 from game import ai_director as ai
+from game import config as cfg
 from game.roles import NIGHT_ORDER, WIN_CONDITIONS
 from game.state import NPCMemory
 
@@ -91,10 +91,10 @@ def run_night(state: "GameState"):
 
     narration = ai.narrate(
         f"Nuit {state.round} dans le village. Les habitants s'endorment, tremblants. "
-        f"Il reste {len(alive)} joueurs."
+        f"Il reste {len(alive)} joueurs.",
+        event_log=state.event_log,
     )
     state.emit({"type": "narration", "text": narration})
-    time.sleep(1.5)
 
     state.night_actions = {}
 
@@ -114,8 +114,6 @@ def run_night(state: "GameState"):
             _night_voyante(state, actors[0])
         elif role == "sorciere":
             _night_sorciere(state, actors[0])
-
-        time.sleep(0.5)
 
     # Appliquer les morts
     victim_id = state.night_actions.get("loup_victim")
@@ -187,25 +185,29 @@ def _night_wolves(state: "GameState"):
     candidate_names = _names(candidates)
 
     # Délibération des loups IA
+    # L'ACK TTS n'est attendu que si le joueur humain verra l'événement
+    human = state.get_human()
+    human_hears_wolves = state.mode == "spectator" or (human and human.team == "loups")
+
     for wolf in wolves:
         if not wolf.is_human:
-            speech = ai.wolf_deliberation(wolf.name, wolf_names, candidate_names, state.round)
+            speech = ai.wolf_deliberation(wolf.name, wolf_names, candidate_names, state.round,
+                                          event_log=state.event_log)
+            if human_hears_wolves:
+                state.tts_ack_event.clear()
             state.emit({"type": "wolf_private", "visible": "wolves",
                         "speaker": wolf.name, "text": speech})
-            time.sleep(0.8)
+            if human_hears_wolves:
+                state.tts_ack_event.wait(timeout=int(cfg.get("TTS_ACK_TIMEOUT")))
 
     if human_wolf and state.mode == "player":
         result = state.await_human_action("wolf_vote", candidates)
         victim_id = result["target_id"] if result else random.choice(candidates).id
     else:
-        # Vote IA pour la victime
+        # Choix de la victime : loup avec le plus de suspicion sur les villageois
         mem = state.npc_memories.get(wolves[0].id) if wolves else None
-        sus = mem.suspicions if mem else {}
-        name = ai.npc_vote(
-            wolves[0].name, sus, candidate_names, state.round
-        )
-        victim = next((p for p in candidates if p.name == name), random.choice(candidates))
-        victim_id = victim.id
+        chosen = _npc_vote_target(mem, candidates)
+        victim_id = chosen.id if chosen else random.choice(candidates).id
 
     state.night_actions["loup_victim"] = victim_id
     victim = state.get_player(victim_id)
@@ -342,67 +344,117 @@ def run_jour(state: "GameState"):
     else:
         desc = f"Matin du jour {state.round}. Le village se réveille, épargné cette nuit."
 
-    narration = ai.narrate(desc)
+    narration = ai.narrate(desc, event_log=state.event_log)
     state.emit({"type": "narration", "text": narration})
-    time.sleep(1.5)
 
-    # --- Discussion : passe 1 ---
-    _discussion_round(state, passes=2, include_human=False)
+    # --- Discussion : passe 1 (ouverture) ---
+    _passes = int(cfg.get("DISCUSSION_PASSES"))
+    _discussion_round(state, passes=_passes)
 
     # Tour de parole humain
     human = state.get_human()
     if human and human.is_alive and state.mode == "player":
-        result = state.await_human_action("chat", [], extra={"timeout": 120})
+        result = state.await_human_action("chat", [], extra={"timeout": int(cfg.get("HUMAN_CHAT_TIMEOUT_1"))})
         human_msg = result.get("extra", {}).get("message", "") if result else ""
     else:
         human_msg = ""
 
-    # --- Discussion : passe 2 (réactions) ---
-    if human_msg:
-        _discussion_round(state, passes=2, include_human=False, human_last_message=human_msg)
+    # --- Discussion : passe 2 (réactions au joueur ou débat libre) ---
+    _discussion_round(state, passes=_passes, human_last_message=human_msg or None)
+
+    # Deuxième tour de parole humain (réponse aux réactions)
+    if human and human.is_alive and state.mode == "player":
+        result = state.await_human_action("chat", [], extra={"timeout": int(cfg.get("HUMAN_CHAT_TIMEOUT_2"))})
+        human_msg2 = result.get("extra", {}).get("message", "") if result else ""
+        if human_msg2:
+            _discussion_round(state, passes=_passes, human_last_message=human_msg2)
 
     # --- Vote ---
     _run_vote(state)
 
 
+def _dead_events(state: "GameState") -> list[str]:
+    """Construit la liste des morts avec cause depuis l'event_log."""
+    _cause_labels = {
+        "loup":     "tué par les loups",
+        "vote":     "éliminé par vote du village",
+        "sorciere": "empoisonné par la sorcière",
+        "chasseur": "abattu par le chasseur",
+        "chagrin":  "mort de chagrin (amoureux)",
+    }
+    events = []
+    for evt in state.event_log:
+        if evt.get("type") != "death":
+            continue
+        name = evt.get("name", "?")
+        cause = _cause_labels.get(evt.get("cause", ""), evt.get("cause", ""))
+        role = evt.get("role_revealed", "")
+        entry = f"{name} ({cause})" + (f", rôle révélé : {role}" if role else "")
+        if entry not in events:
+            events.append(entry)
+    return events
+
+
+def _sus_alive(mem, state: "GameState") -> dict[str, float]:
+    """Suspicions filtrées aux joueurs encore vivants (par nom)."""
+    result = {}
+    for pid, score in mem.suspicions.items():
+        p = state.get_player(pid)
+        if p is not None and p.is_alive:
+            result[p.name] = score
+    return result
+
+
+def _npc_vote_target(mem, candidates: list) -> "Player | None":
+    """Vote déterministe : candidat vivant avec le score de suspicion le plus élevé.
+    Légère gigue aléatoire pour éviter les ex-æquo mécaniques."""
+    if not candidates:
+        return None
+    scored = [
+        (p, (mem.suspicions.get(p.id, 0.3) if mem else 0.3) + random.uniform(-0.05, 0.05))
+        for p in candidates
+    ]
+    return max(scored, key=lambda x: x[1])[0]
+
+
 def _discussion_round(state: "GameState", passes: int = 2,
-                      include_human: bool = False, human_last_message: str = ""):
+                      human_last_message: str | None = None):
     alive_npcs = [p for p in state.alive_players() if not p.is_human]
     random.shuffle(alive_npcs)
 
-    dead_names = _names([p for p in state.players if not p.is_alive])
+    dead_evts = _dead_events(state)
+    human = state.get_human()
+    human_name = human.name if human and human.is_alive else None
 
     for _ in range(passes):
         for npc in alive_npcs:
-            mem = state.npc_memories.setdefault(
-                npc.id, NPCMemory()
-            )
-            sus_by_name = {
-                state.get_player(pid).name: score
-                for pid, score in mem.suspicions.items()
-                if state.get_player(pid)
-            }
+            mem = state.npc_memories.setdefault(npc.id, NPCMemory())
+            sus_by_name = _sus_alive(mem, state)
             victim_id = state.night_actions.get("loup_victim")
             victim = state.get_player(victim_id) if victim_id else None
             last_victim_name = victim.name if (victim and not victim.is_alive) else None
 
             speech = ai.npc_dialogue(
                 npc_name=npc.name,
-                npc_role_cover="villageois" if npc.role != "loup-garou" else "villageois",
+                npc_role_cover="villageois",
                 suspicions=sus_by_name,
                 recent_speech=mem.recent_speech,
                 alive_names=_names(state.alive_players()),
-                dead_names=dead_names,
+                dead_events=dead_evts,
                 last_victim=last_victim_name,
-                human_last_message=human_last_message or None,
+                human_last_message=human_last_message,
                 round_num=state.round,
+                human_name=human_name,
+                event_log=state.event_log,
+                is_wolf=(npc.role == "loup-garou"),
             )
+            state.tts_ack_event.clear()
             state.emit({"type": "npc_dialogue", "speaker": npc.name,
                         "player_id": npc.id, "text": speech})
             mem.recent_speech.append(f"{npc.name}: {speech}")
-            if len(mem.recent_speech) > 6:
-                mem.recent_speech = mem.recent_speech[-6:]
-            time.sleep(0.8)
+            if len(mem.recent_speech) > 8:
+                mem.recent_speech = mem.recent_speech[-8:]
+            state.tts_ack_event.wait(timeout=int(cfg.get("TTS_ACK_TIMEOUT")))
 
 
 def _run_vote(state: "GameState"):
@@ -421,20 +473,48 @@ def _run_vote(state: "GameState"):
         if result:
             votes[human.id] = result["target_id"]
 
-    # Votes IA
-    dead_names = _names([p for p in state.players if not p.is_alive])
+    # Votes IA — raisonnement IA sur l'état du jeu, fallback suspicion si non parsable
+    dead_evts = _dead_events(state)
+
+    # Discussion récente : dernières répliques de tous les PNJ vivants
+    all_recent: list[str] = []
+    seen_lines: set[str] = set()
+    for p in alive:
+        if not p.is_human:
+            m = state.npc_memories.get(p.id)
+            if m:
+                for line in m.recent_speech[-2:]:
+                    if line not in seen_lines:
+                        seen_lines.add(line)
+                        all_recent.append(line)
+
     for npc in alive:
         if npc.is_human:
             continue
         mem = state.npc_memories.get(npc.id)
-        sus_by_name = {
-            state.get_player(pid).name: score
-            for pid, score in (mem.suspicions.items() if mem else [])
-            if state.get_player(pid)
-        }
-        candidates_names = [p.name for p in alive if p.id != npc.id]
-        chosen_name = ai.npc_vote(npc.name, sus_by_name, candidates_names, state.round)
-        chosen = next((p for p in alive if p.name == chosen_name), None)
+        candidates_list = [p for p in alive if p.id != npc.id]
+        candidates_names = [p.name for p in candidates_list]
+
+        ally_names = (
+            [p.name for p in alive if p.team == "loups" and p.id != npc.id]
+            if npc.team == "loups" else []
+        )
+
+        chosen_name = ai.npc_vote(
+            npc_name=npc.name,
+            npc_role=npc.role,
+            ally_names=ally_names,
+            candidates=candidates_names,
+            dead_events=dead_evts,
+            recent_discussion=all_recent,
+            round_num=state.round,
+            event_log=state.event_log,
+            is_wolf=(npc.team == "loups"),
+        )
+
+        chosen = next((p for p in candidates_list if p.name == chosen_name), None)
+        if not chosen:
+            chosen = _npc_vote_target(mem, candidates_list)
         if chosen:
             votes[npc.id] = chosen.id
 
@@ -467,7 +547,8 @@ def _run_vote(state: "GameState"):
         eliminated.is_alive = False
         narration = ai.narrate(
             f"{eliminated.name} est éliminé·e par le vote du village avec {max_votes} voix. "
-            f"Son rôle était : {eliminated.role}."
+            f"Son rôle était : {eliminated.role}.",
+            event_log=state.event_log,
         )
         state.emit({"type": "death", "player_id": eliminated.id, "name": eliminated.name,
                     "cause": "vote", "role_revealed": eliminated.role, "text": narration})
@@ -497,5 +578,5 @@ def _end_game(state: "GameState", winner: str):
     state.winner = winner
 
     conclusion = WIN_CONDITIONS.get(winner, "La partie est terminée.")
-    narration = ai.narrate(conclusion)
+    narration = ai.narrate(conclusion, event_log=state.event_log)
     state.emit({"type": "game_over", "winner": winner, "text": narration})

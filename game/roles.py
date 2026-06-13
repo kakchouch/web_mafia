@@ -49,19 +49,25 @@ ROLE_CONFIGS = {
 
 # Composition par nombre de joueurs
 ROLE_POOLS = {
-    4: ["loup-garou", "voyante", "villageois", "villageois"],
-    5: ["loup-garou", "voyante", "sorciere", "villageois", "villageois"],
-    6: ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "villageois"],
-    7: ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "villageois", "villageois"],
-    8: ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois"],
+    4:  ["loup-garou", "voyante", "villageois", "villageois"],
+    5:  ["loup-garou", "voyante", "sorciere", "villageois", "villageois"],
+    6:  ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "villageois"],
+    7:  ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "villageois", "villageois"],
+    8:  ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois"],
+    9:  ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois", "villageois"],
+    10: ["loup-garou", "loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois", "villageois"],
+    11: ["loup-garou", "loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois", "villageois", "villageois"],
+    12: ["loup-garou", "loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois", "villageois", "villageois", "villageois"],
 }
 
-FRENCH_NAMES = [
-    "Marie", "Pierre", "Sophie", "Jean", "Isabelle", "Thomas",
-    "Camille", "Nicolas", "Lucie", "Antoine", "Emma", "Julien",
-    "Léa", "Maxime", "Clara", "François", "Chloé", "Romain",
-    "Manon", "Gabriel",
-]
+# {prénom: "m" | "f"} — genre utilisé pour sélectionner le profil de voix TTS
+FRENCH_NAMES: dict[str, str] = {
+    "Marie": "f", "Pierre": "m", "Sophie": "f", "Jean": "m",
+    "Isabelle": "f", "Thomas": "m", "Camille": "f", "Nicolas": "m",
+    "Lucie": "f", "Antoine": "m", "Emma": "f", "Julien": "m",
+    "Léa": "f", "Maxime": "m", "Clara": "f", "François": "m",
+    "Chloé": "f", "Romain": "m", "Manon": "f", "Gabriel": "m",
+}
 
 WIN_CONDITIONS = {
     "village": "Le village a éliminé tous les loups-garous ! La paix est revenue.",
