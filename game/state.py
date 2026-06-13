@@ -65,10 +65,10 @@ class GameState:
 
     def check_win(self) -> Optional[str]:
         mafia = self.alive_mafia()
-        town = self.alive_town()
+        non_mafia = [p for p in self.players if p.is_alive and p.team != "mafia"]
         if not mafia:
             return "town"
-        if len(mafia) >= len(town):
+        if len(mafia) >= len(non_mafia):
             return "mafia"
         return None
 

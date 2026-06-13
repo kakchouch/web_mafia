@@ -402,6 +402,8 @@ def _run_vote_sequential(state: "GameState"):
             personality=npc.personality,
         )
 
+    _ABSTAIN_KEYWORDS = ("i abstain", "abstain", "i pass", "pass my vote", "no vote")
+
     if npc_voters:
         current = _gen_vote(npc_voters[0])
         for i, npc in enumerate(npc_voters):
@@ -412,14 +414,17 @@ def _run_vote_sequential(state: "GameState"):
 
             statement = current
             candidates_list = [p for p in alive if p.id != npc.id]
-            voted = next(
-                (p for p in candidates_list if p.name.lower() in statement.lower()),
-                None,
-            )
-            if not voted:
-                voted = _npc_vote_target(state.npc_memories.get(npc.id), candidates_list)
-            if voted:
-                votes[npc.id] = voted.id
+
+            abstaining = any(kw in statement.lower() for kw in _ABSTAIN_KEYWORDS)
+            if not abstaining:
+                voted = next(
+                    (p for p in candidates_list if p.name.lower() in statement.lower()),
+                    None,
+                )
+                if not voted:
+                    voted = _npc_vote_target(state.npc_memories.get(npc.id), candidates_list)
+                if voted:
+                    votes[npc.id] = voted.id
 
             mem = state.npc_memories.get(npc.id)
             state.tts_ack_event.clear()
@@ -436,24 +441,36 @@ def _run_vote_sequential(state: "GameState"):
 
     human = state.get_human()
     if human and human.is_alive and state.mode == "player":
-        candidates = [p for p in alive if p.id != human.id]
+        # Human speaks before casting their vote
+        result_chat = state.await_human_action(
+            "chat", [],
+            extra={"timeout": int(cfg.get("HUMAN_CHAT_TIMEOUT_1"))},
+        )
+        human_msg = result_chat.get("extra", {}).get("message", "") if result_chat else ""
+        if human_msg:
+            _reaction_round(state, human_msg)
+
+        # Human casts their vote (empty target_id = abstain)
+        candidates = [p for p in state.alive_players() if p.id != human.id]
         result = state.await_human_action("vote", candidates)
-        if result:
+        if result and result.get("target_id"):
             votes[human.id] = result["target_id"]
 
     tally: dict[str, int] = {}
     for target_id in votes.values():
         tally[target_id] = tally.get(target_id, 0) + 1
 
-    if not tally:
-        state.emit({"type": "narration", "text": "No consensus reached. Nobody is eliminated this round."})
+    total_voters = len(alive)  # all alive players, abstentions count against the target
+    max_votes = max(tally.values()) if tally else 0
+
+    if max_votes * 2 <= total_voters:
+        state.emit({"type": "narration",
+                    "text": "No strict majority reached. Nobody is eliminated this round."})
         state.round += 1
         run_night(state)
         return
 
-    max_votes = max(tally.values())
-    most_voted = [pid for pid, count in tally.items() if count == max_votes]
-    eliminated_id = random.choice(most_voted)
+    eliminated_id = max(tally, key=tally.get)
     eliminated = state.get_player(eliminated_id)
     voters_for = [vid for vid, tid in votes.items() if tid == eliminated_id]
 

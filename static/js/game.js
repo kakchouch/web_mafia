@@ -241,7 +241,13 @@ function _renderActionPanel(action) {
     case 'vote':
       _renderVotePanel(panel, action, 'vote',
         '🗳 Town Vote',
-        'Who do you suspect? Vote to eliminate them.');
+        'Who do you suspect? A strict majority is required to eliminate.');
+      // Abstain option
+      const btnAbstain = document.createElement('button');
+      btnAbstain.className = 'btn-skip';
+      btnAbstain.textContent = 'Abstain';
+      btnAbstain.onclick = () => _sendAction('vote', '');
+      panel.appendChild(btnAbstain);
       break;
 
     case 'chat':

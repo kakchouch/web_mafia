@@ -1,6 +1,6 @@
 """
-Télécharge les modèles Kokoro nécessaires au TTS.
-Lancer une seule fois avant de démarrer le jeu :
+Downloads the Kokoro models required for TTS.
+Run once before starting the game:
 
     python download_models.py
 """
@@ -25,10 +25,10 @@ for filename, url in FILES.items():
     dest = os.path.join(MODELS_DIR, filename)
     if os.path.exists(dest):
         size_mb = os.path.getsize(dest) / 1_000_000
-        print(f"{filename} deja present ({size_mb:.0f} Mo), ignore.")
+        print(f"{filename} already present ({size_mb:.0f} MB), skipping.")
         continue
 
-    print(f"Telechargement de {filename}...")
+    print(f"Downloading {filename}...")
 
     def _progress(count, block_size, total_size):
         if total_size > 0:
@@ -37,6 +37,6 @@ for filename, url in FILES.items():
 
     urllib.request.urlretrieve(url, dest, reporthook=_progress)
     size_mb = os.path.getsize(dest) / 1_000_000
-    print(f"  {filename} telecharge ({size_mb:.0f} Mo).        ")
+    print(f"  {filename} downloaded ({size_mb:.0f} MB).        ")
 
-print("\nModeles prets. Vous pouvez lancer : python app.py")
+print("\nModels ready. You can now run: python app.py")

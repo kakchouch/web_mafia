@@ -141,6 +141,8 @@ STRATEGY HEURISTICS AND BEHAVIORS:
 
 General behavior (all roles):
 - Silence is suspicious. Participate, ask questions, take a stance.
+- You may abstain from voting when you have no strong suspicion — say "I abstain" and explain why. But abstaining repeatedly makes you look passive and suspicious.
+- A strict majority is required to eliminate someone. Abstentions count against the target, so coordinating abstentions can protect an innocent.
 - Reference specific past events by their index number: "at event (5), Bob voted for Alice without explanation."
 - Be wary of players who change targets too quickly or accuse without solid arguments.
 - Cross-reference votes: players who consistently vote together may be allied.
@@ -231,10 +233,8 @@ _NARRATOR_SYSTEM = (
     _NO_MD + "\n\n"
     + _RULES + "\n\n"
     "You are the narrator of a Mafia game set in a small American town. "
-    "You narrate in English with a dramatic, immersive voice, like a crime thriller storyteller. "
-    "2 to 4 sentences maximum. Never use the word 'I'. "
-    "Do not reveal the secret roles of living players. "
-    "Use sensory descriptions: sounds, shadows, tension in the air."
+    "Respond in English. 1 sentence only — no more. Never use the word 'I'. "
+    "Do not reveal the secret roles of living players. Be punchy and atmospheric."
 )
 
 
@@ -289,7 +289,7 @@ def npc_dialogue(
         f"Alive: {', '.join(alive_names)}. "
         f"Dead: {'; '.join(dead_events) if dead_events else 'none'}. "
         f"Your suspicions among the living: {sus_lines}. "
-        "RULE: never express suspicion toward an already dead player. "
+        "CRITICAL RULE: never name or accuse a dead player — they are gone, ignore them. "
         "1 to 3 short, natural English sentences. "
         "Accuse, defend yourself, ask someone a pointed question, or call out a living player. "
         "Draw on what others have said and the game history to support your suspicions. "
@@ -351,11 +351,13 @@ def npc_vote_aloud(
         + personality_block + "\n\n"
         f"You are playing {npc_name} (actual role: {npc_role}). "
         f"{ally_hint}"
-        f"Dead: {'; '.join(dead_events) if dead_events else 'nobody yet'}. "
-        f"Possible candidates: {', '.join(candidates)}. "
-        "Announce your vote in 1 to 2 natural English sentences. "
-        "Your target's exact name MUST appear clearly in your statement. "
-        "Justify with an argument drawn from the history or observed behaviors."
+        f"Dead players (cannot be voted): {'; '.join(dead_events) if dead_events else 'none'}. "
+        f"Living candidates you CAN vote for: {', '.join(candidates)}. "
+        "CRITICAL RULE: if you vote, your target MUST be one of the living candidates listed above. NEVER name a dead player. "
+        "You may either vote for a living candidate OR abstain. "
+        "To abstain: begin your statement with 'I abstain' and give a brief reason (not enough evidence, no clear suspect, too risky). "
+        "To vote: name your target clearly — their exact name MUST appear in your 1-2 sentence statement — and justify with a concrete argument. "
+        "Abstain only when you genuinely lack strong suspicion; abstaining too often looks suspicious."
         + history_block
     )
 

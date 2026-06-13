@@ -1,19 +1,19 @@
 """
-Moteur TTS basé sur Kokoro-ONNX.
+TTS engine based on Kokoro-ONNX.
 
-Chaque personnage reçoit un profil cohérent avec son genre (prénom) :
-  - pool masculin : pitches négatifs/neutres + voix masculines anglaises
-  - pool féminin  : pitches positifs/neutres + voix féminines anglaises
+Each character gets a consistent voice profile based on their gender:
+  - Masculine pool: American male voices (am_adam, am_michael)
+  - Feminine pool:  American female voices (af_bella, af_jessica)
 
-Technique pitch shift :
-  Le WAV est écrit avec claimed_rate = real_rate * 2^(semitones/12).
-  Le navigateur joue à ce taux → pitch décalé sans librairie supplémentaire.
-  La vitesse de synthèse est compensée pour que la durée reste identique.
+Pitch shift technique:
+  The WAV is written with claimed_rate = real_rate * 2^(semitones/12).
+  The browser plays at this rate → pitch shifted without extra libraries.
+  Synthesis speed is compensated so playback duration stays the same.
 
-Modèles requis dans le dossier models/ :
+Required models in models/ folder:
   models/kokoro-v1.0.onnx
   models/voices-v1.0.bin
-(télécharger avec : python download_models.py)
+(download with: python download_models.py)
 """
 from __future__ import annotations
 
@@ -31,31 +31,31 @@ MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
 MODEL_PATH  = os.path.join(MODELS_DIR, "kokoro-v1.0.onnx")
 VOICES_PATH = os.path.join(MODELS_DIR, "voices-v1.0.bin")
 
-# Narrateur : voix française pure, plus grave
-_NARRATOR_PITCH = -3
+# Narrator: deep British male, slightly lowered
+_NARRATOR_VOICE = "bm_george"
+_NARRATOR_PITCH = -2
 
-# Profils : (fr_ratio, voix_secondaire, pitch_semitones, speed_base)
-# fr_ratio   : poids de ff_siwis (1.0 = pur français)
-# secondaire : voix anglaise mélangée pour varier le timbre
-# pitch      : demi-tons via sample_rate WAV (négatif = grave, positif = aigu)
-# speed      : vitesse de base Kokoro
+# Profiles: (base_voice, secondary_voice, base_ratio, pitch_semitones, speed_base)
+# base_ratio  : weight of base voice (1.0 = pure base)
+# pitch       : semitones via WAV sample rate (negative = deeper, positive = higher)
+# speed       : Kokoro base synthesis speed
 
 _MASCULINE_PROFILES = [
-    (1.00, None,          0,  1.00),   # 0  neutre masculin
-    (0.68, "am_adam",    -3,  0.93),   # 1  grave marqué
-    (0.60, "am_michael", -5,  0.89),   # 2  très grave (vieux sage)
-    (0.85, "am_adam",    -1,  0.96),   # 3  légèrement grave, posé
-    (0.65, "am_adam",    -4,  0.91),   # 4  grave rauque
-    (1.00, None,         -2,  0.97),   # 5  neutre légèrement grave
+    ("am_adam",    None,         1.00,  0,  1.00),   # 0  neutral male
+    ("am_adam",    "am_michael", 0.70, -3,  0.93),   # 1  deep
+    ("am_michael", None,         1.00, -5,  0.89),   # 2  very deep
+    ("am_adam",    "am_michael", 0.85, -1,  0.96),   # 3  slightly deep, calm
+    ("am_michael", "am_adam",    0.65, -4,  0.91),   # 4  deep raspy
+    ("am_adam",    None,         1.00, -2,  0.97),   # 5  neutral deep
 ]
 
 _FEMININE_PROFILES = [
-    (0.72, "af_bella",   +4,  1.06),   # 0  féminin clair
-    (0.78, "af_jessica", +2,  1.04),   # 1  féminin médium
-    (1.00, None,         +5,  1.13),   # 2  voix haute, légère
-    (0.80, "af_bella",   +3,  1.07),   # 3  féminin vif
-    (0.82, "af_bella",   -1,  0.97),   # 4  féminin grave, mystérieux
-    (0.75, "af_jessica", +6,  1.18),   # 5  très aigu, jeune
+    ("af_bella",   None,         1.00, +4,  1.06),   # 0  clear female
+    ("af_jessica", "af_bella",   0.78, +2,  1.04),   # 1  medium female
+    ("af_bella",   None,         1.00, +5,  1.13),   # 2  high, light
+    ("af_bella",   "af_jessica", 0.80, +3,  1.07),   # 3  lively female
+    ("af_jessica", "af_bella",   0.82, -1,  0.97),   # 4  deep mysterious
+    ("af_jessica", None,         1.00, +6,  1.18),   # 5  very high, young
 ]
 
 _voice_arrays: dict[str, np.ndarray] = {}
@@ -65,19 +65,19 @@ def _load():
     global _kokoro
     from kokoro_onnx import Kokoro
     _kokoro = Kokoro(MODEL_PATH, VOICES_PATH)
-
-    fr = _kokoro.get_voice_style("ff_siwis")
     all_voices = _kokoro.get_voices()
 
-    _voice_arrays["narrator"] = fr.copy()
+    narrator = _kokoro.get_voice_style(_NARRATOR_VOICE)
+    _voice_arrays["narrator"] = narrator.copy()
 
     for prefix, profiles in (("m", _MASCULINE_PROFILES), ("f", _FEMININE_PROFILES)):
-        for i, (fr_ratio, secondary, _pitch, _speed) in enumerate(profiles):
-            if secondary and secondary in all_voices and fr_ratio < 1.0:
+        for i, (base_voice, secondary, base_ratio, _pitch, _speed) in enumerate(profiles):
+            base = _kokoro.get_voice_style(base_voice)
+            if secondary and secondary in all_voices and base_ratio < 1.0:
                 sec = _kokoro.get_voice_style(secondary)
-                blended = fr * fr_ratio + sec * (1.0 - fr_ratio)
+                blended = base * base_ratio + sec * (1.0 - base_ratio)
             else:
-                blended = fr.copy()
+                blended = base.copy()
             _voice_arrays[f"{prefix}_{i}"] = blended
 
 
@@ -101,12 +101,12 @@ def synthesize(
     gender: str = "m",
 ) -> bytes:
     """
-    Génère un WAV pour le texte donné.
+    Generate a WAV for the given text.
 
-    character_index  : index dans le pool genré (cycle automatique)
-    is_narrator      : True pour la voix du narrateur
-    speed_multiplier : facteur global de vitesse (slider utilisateur)
-    gender           : "m" (masculin) ou "f" (féminin)
+    character_index  : index in the gendered pool (auto cycles)
+    is_narrator      : True for the narrator voice
+    speed_multiplier : global speed factor (user slider)
+    gender           : "m" (masculine) or "f" (feminine)
     """
     import soundfile as sf
 
@@ -121,13 +121,13 @@ def synthesize(
         profiles = _FEMININE_PROFILES if gender == "f" else _MASCULINE_PROFILES
         prefix = "f" if gender == "f" else "m"
         idx = character_index % len(profiles)
-        _fr_ratio, _secondary, pitch, base_speed = profiles[idx]
+        _bv, _sv, _br, pitch, base_speed = profiles[idx]
         voice = _voice_arrays.get(f"{prefix}_{idx}", _voice_arrays["narrator"])
 
-    # Facteur de pitch : 2^(semitones/12)
+    # Pitch factor: 2^(semitones/12)
     pf = 2.0 ** (pitch / 12.0)
 
-    # Vitesse de synthèse compensée pour conserver la durée finale
+    # Synthesis speed compensated to keep final playback duration unchanged
     synthesis_speed = max(0.5, min(2.0, base_speed * speed_multiplier / pf))
 
     with _lock:
@@ -135,10 +135,10 @@ def synthesize(
             text,
             voice=voice,
             speed=synthesis_speed,
-            lang="fr-fr",
+            lang="en-us",
         )
 
-    # Pitch shift : navigateur lit à claimed_rate Hz au lieu de sample_rate Hz
+    # Pitch shift: browser reads at claimed_rate Hz instead of sample_rate Hz
     claimed_rate = int(round(sample_rate * pf))
 
     buf = io.BytesIO()
