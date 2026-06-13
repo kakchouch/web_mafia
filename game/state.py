@@ -8,27 +8,26 @@ from typing import Optional
 class Player:
     id: str
     name: str
-    role: str          # loup-garou | villageois | voyante | sorciere | chasseur | cupidon
-    team: str          # village | loups
+    role: str          # mafia | villager | sheriff | doctor | vigilante | jester
+    team: str          # town | mafia | jester
     is_alive: bool = True
     is_human: bool = False
-    witch_heal_used: bool = False
-    witch_kill_used: bool = False
-    lover_id: Optional[str] = None
+    vigilante_shot_used: bool = False
+    personality: str = ""
 
 
 @dataclass
 class NPCMemory:
     suspicions: dict = field(default_factory=dict)   # player_id -> float 0.0-1.0
-    known_role: Optional[str] = None                  # voyante PNJ seulement
-    recent_speech: list = field(default_factory=list) # 3 dernières répliques
+    known_role: Optional[str] = None                  # sheriff NPC only
+    recent_speech: list = field(default_factory=list)
 
 
 class GameState:
     def __init__(self):
         self.phase: str = "setup"
         self.round: int = 0
-        self.mode: str = "player"        # player | spectator
+        self.mode: str = "player"
         self.players: list[Player] = []
         self.human_id: Optional[str] = None
         self.night_actions: dict = {}
@@ -37,6 +36,7 @@ class GameState:
         self.event_log: list[dict] = []
         self.winner: Optional[str] = None
         self.npc_memories: dict[str, NPCMemory] = {}
+        self.doctor_last_save_id: Optional[str] = None
         self._lock = threading.Lock()
         self.tts_ack_event = threading.Event()
 
@@ -49,11 +49,11 @@ class GameState:
     def alive_players(self) -> list[Player]:
         return [p for p in self.players if p.is_alive]
 
-    def alive_wolves(self) -> list[Player]:
-        return [p for p in self.players if p.is_alive and p.team == "loups"]
+    def alive_mafia(self) -> list[Player]:
+        return [p for p in self.players if p.is_alive and p.team == "mafia"]
 
-    def alive_village(self) -> list[Player]:
-        return [p for p in self.players if p.is_alive and p.team == "village"]
+    def alive_town(self) -> list[Player]:
+        return [p for p in self.players if p.is_alive and p.team == "town"]
 
     def get_player(self, player_id: str) -> Optional[Player]:
         return next((p for p in self.players if p.id == player_id), None)
@@ -64,16 +64,12 @@ class GameState:
         return None
 
     def check_win(self) -> Optional[str]:
-        wolves = self.alive_wolves()
-        village = self.alive_village()
-        if not wolves:
-            return "village"
-        if len(wolves) >= len(village):
-            return "loups"
-        # Condition amoureux : si exactement 2 joueurs vivants et ce sont les amoureux
-        alive = self.alive_players()
-        if len(alive) == 2 and alive[0].lover_id == alive[1].id:
-            return "amoureux"
+        mafia = self.alive_mafia()
+        town = self.alive_town()
+        if not mafia:
+            return "town"
+        if len(mafia) >= len(town):
+            return "mafia"
         return None
 
     def await_human_action(self, action_type: str, targets: list, extra: dict = None) -> Optional[dict]:

@@ -14,7 +14,8 @@ load_dotenv("config.env")
 
 import game.state as gs
 import game.config as gcfg
-from game.roles import FRENCH_NAMES, ROLE_CONFIGS, ROLE_POOLS
+from game.ai_director import NPC_PROFILES
+from game.roles import ENGLISH_NAMES, ROLE_CONFIGS, ROLE_POOLS
 from game.state import GameState, NPCMemory, Player
 from game.phases import run_night
 
@@ -34,7 +35,6 @@ def _build_game(player_name: str, role_choice: str, player_count: int, mode: str
     pool = ROLE_POOLS[player_count][:]
     random.shuffle(pool)
 
-    # Respecter la préférence de rôle si possible
     if mode == "player" and role_choice in pool:
         pool.remove(role_choice)
         human_role = role_choice
@@ -43,8 +43,7 @@ def _build_game(player_name: str, role_choice: str, player_count: int, mode: str
     else:
         human_role = None
 
-    # Noms français distincts (FRENCH_NAMES est un dict {nom: genre})
-    names = random.sample(list(FRENCH_NAMES.keys()), player_count - (1 if mode == "player" else 0))
+    names = random.sample(list(ENGLISH_NAMES.keys()), player_count - (1 if mode == "player" else 0))
 
     players: list[Player] = []
 
@@ -60,6 +59,7 @@ def _build_game(player_name: str, role_choice: str, player_count: int, mode: str
         players.append(human)
         state.human_id = "human"
 
+    profile_pool = random.sample(list(NPC_PROFILES.keys()), len(NPC_PROFILES))
     for i, role in enumerate(pool):
         npc = Player(
             id=f"p{i+1}",
@@ -68,26 +68,25 @@ def _build_game(player_name: str, role_choice: str, player_count: int, mode: str
             team=ROLE_CONFIGS[role]["team"],
             is_alive=True,
             is_human=False,
+            personality=profile_pool[i % len(profile_pool)],
         )
         players.append(npc)
         mem = NPCMemory()
-        # Loups se connaissent entre eux
-        if role == "loup-garou":
+        if role == "mafia":
             for other in players:
-                if other.role == "loup-garou" and other.id != npc.id:
+                if other.role == "mafia" and other.id != npc.id:
                     mem.suspicions[other.id] = -1.0
         state.npc_memories[npc.id] = mem
 
     random.shuffle(players)
     state.players = players
 
-    # Les loups se connaissent entre eux (deuxième passe complète)
-    wolf_ids = [p.id for p in players if p.role == "loup-garou"]
-    for wid in wolf_ids:
-        mem = state.npc_memories.get(wid)
+    mafia_ids = [p.id for p in players if p.role == "mafia"]
+    for mid in mafia_ids:
+        mem = state.npc_memories.get(mid)
         if mem:
-            for other_id in wolf_ids:
-                if other_id != wid:
+            for other_id in mafia_ids:
+                if other_id != mid:
                     mem.suspicions[other_id] = -1.0
 
     return state
@@ -112,7 +111,6 @@ def set_config():
     data = request.get_json() or {}
     gcfg.update(data)
     gcfg.save()
-    # Invalider le client IA si l'URL ou le modèle a changé
     from game import ai_director
     ai_director.reset_client()
     return jsonify({"ok": True, "config": gcfg.all_values()})
@@ -121,7 +119,7 @@ def set_config():
 @app.route("/api/game/start", methods=["POST"])
 def start_game():
     data = request.get_json() or {}
-    player_name = str(data.get("player_name", "Joueur")).strip() or "Joueur"
+    player_name = str(data.get("player_name", "Player")).strip() or "Player"
     role_choice = data.get("role_choice", "random")
     player_count = max(
         int(gcfg.get("PLAYER_COUNT_MIN")),
@@ -136,19 +134,17 @@ def start_game():
         gs.GAME = _build_game(player_name, role_choice, player_count, mode)
         state = gs.GAME
 
-    # Démarrer le thread de jeu
     t = threading.Thread(target=_game_thread, args=(state,), daemon=True)
     t.start()
 
     human = state.get_human()
-    # Attribuer un index de voix à chaque PNJ dans le pool genré correspondant
     male_idx = 0
     female_idx = 0
     players_out = []
     for p in state.players:
         entry = {"id": p.id, "name": p.name, "is_human": p.is_human}
         if not p.is_human:
-            gender = FRENCH_NAMES.get(p.name, "m")
+            gender = ENGLISH_NAMES.get(p.name, "m")
             entry["gender"] = gender
             if gender == "f":
                 entry["voice_index"] = female_idx
@@ -173,7 +169,7 @@ def _game_thread(state: GameState):
     try:
         run_night(state)
     except Exception as e:
-        state.emit({"type": "error", "text": f"Erreur interne : {e}"})
+        state.emit({"type": "error", "text": f"Internal error: {e}"})
 
 
 @app.route("/api/game/state")
@@ -188,7 +184,7 @@ def game_state():
         "winner": state.winner,
         "players": [
             {"id": p.id, "name": p.name, "is_alive": p.is_alive, "is_human": p.is_human,
-             "role": p.role if not p.is_alive else None}  # révèle rôle seulement si mort
+             "role": p.role if not p.is_alive else None}
             for p in state.players
         ],
         "pending_action": {
@@ -210,7 +206,6 @@ def take_action():
     target_id = data.get("target_id", "")
     extra = data.get("extra", {})
 
-    # Action spéciale : message de discussion (pas de target)
     if action_type == "chat":
         if state.pending_action and state.pending_action["type"] == "chat":
             state.pending_action["result"] = {"target_id": None, "extra": {"message": data.get("message", "")}}
@@ -234,14 +229,14 @@ def tts_ack():
 def tts_synthesize():
     from game.tts_engine import synthesize, is_ready
     if not is_ready():
-        return jsonify({"error": "Modèles Kokoro non trouvés. Lancez : python download_models.py"}), 503
+        return jsonify({"error": "Kokoro models not found. Run: python download_models.py"}), 503
 
     data = request.get_json() or {}
     text = str(data.get("text", "")).strip()
     if not text:
         return "", 204
 
-    char_index = data.get("character_index")   # int ou None
+    char_index = data.get("character_index")
     is_narrator = bool(data.get("is_narrator", False))
     speed_multiplier = float(data.get("speed_multiplier", 1.0))
     gender = str(data.get("gender", "m"))
@@ -268,9 +263,9 @@ def ollama_ps():
             ["ollama", "ps"],
             capture_output=True, text=True, timeout=5,
         )
-        return jsonify({"ok": True, "output": r.stdout.strip() or "(aucun modèle chargé)"})
+        return jsonify({"ok": True, "output": r.stdout.strip() or "(no model loaded)"})
     except FileNotFoundError:
-        return jsonify({"ok": False, "output": "ollama introuvable dans le PATH"})
+        return jsonify({"ok": False, "output": "ollama not found in PATH"})
     except Exception as e:
         return jsonify({"ok": False, "output": str(e)})
 
@@ -333,16 +328,16 @@ def _should_send(evt: dict, mode: str, human_role: str | None, human_team: str |
     if visible == "all":
         return True
     if mode == "spectator":
-        return True  # le spectateur voit tout
+        return True
     if visible == "human":
         return True
-    if visible == "wolves":
-        return human_team == "loups"
+    if visible == "mafia":
+        return human_team == "mafia"
     if visible.startswith("spectator_or_role:"):
         role = visible.split(":")[1]
         return human_role == role
     if visible == "spectator":
-        return False  # mode joueur ne voit pas ces événements
+        return False
     return True
 
 

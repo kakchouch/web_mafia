@@ -1,76 +1,74 @@
 from __future__ import annotations
 
-NIGHT_ORDER = ["cupidon", "loup-garou", "voyante", "sorciere", "chasseur"]
+NIGHT_ORDER = ["mafia", "doctor", "sheriff", "vigilante"]
 
 ROLE_CONFIGS = {
-    "loup-garou": {
-        "team": "loups",
-        "label": "Loup-Garou",
-        "emoji": "🐺",
-        "description": "La nuit, vous vous réveillez avec vos congénères et choisissez une victime à dévorer.",
+    "mafia": {
+        "team": "mafia",
+        "label": "Mafia",
+        "emoji": "🔫",
+        "description": "Each night, you and your partners secretly choose a target to eliminate. Blend in during the day.",
         "night_action": True,
     },
-    "villageois": {
-        "team": "village",
-        "label": "Villageois",
-        "emoji": "👨‍🌾",
-        "description": "Vous n'avez aucun pouvoir spécial, mais votre vote compte pendant le jour.",
+    "villager": {
+        "team": "town",
+        "label": "Villager",
+        "emoji": "👤",
+        "description": "You have no special power, but your vote matters. Root out the mafia!",
         "night_action": False,
     },
-    "voyante": {
-        "team": "village",
-        "label": "Voyante",
-        "emoji": "🔮",
-        "description": "Chaque nuit, vous pouvez découvrir la vraie identité d'un joueur.",
+    "sheriff": {
+        "team": "town",
+        "label": "Sheriff",
+        "emoji": "⭐",
+        "description": "Each night, you may investigate one player to learn whether they are Mafia or Innocent.",
         "night_action": True,
     },
-    "sorciere": {
-        "team": "village",
-        "label": "Sorcière",
-        "emoji": "🧙",
-        "description": "Vous possédez une potion de vie (sauver la victime des loups) et une potion de mort (éliminer n'importe qui). Chacune est utilisable une seule fois.",
+    "doctor": {
+        "team": "town",
+        "label": "Doctor",
+        "emoji": "💉",
+        "description": "Each night, protect one player from being killed. You cannot protect the same person two nights in a row.",
         "night_action": True,
     },
-    "chasseur": {
-        "team": "village",
-        "label": "Chasseur",
-        "emoji": "🏹",
-        "description": "Quand vous mourez, vous pouvez immédiatement abattre un autre joueur.",
+    "vigilante": {
+        "team": "town",
+        "label": "Vigilante",
+        "emoji": "🎯",
+        "description": "Once per game, you may shoot a player at night. Shooting an innocent causes you to die of guilt.",
+        "night_action": True,
+    },
+    "jester": {
+        "team": "jester",
+        "label": "Jester",
+        "emoji": "🃏",
+        "description": "You win if the town votes you out during the day. Act suspicious without being too obvious!",
         "night_action": False,
-    },
-    "cupidon": {
-        "team": "village",
-        "label": "Cupidon",
-        "emoji": "💘",
-        "description": "La première nuit, vous désignez deux amoureux. Si l'un meurt, l'autre mourra de chagrin.",
-        "night_action": True,
     },
 }
 
-# Composition par nombre de joueurs
 ROLE_POOLS = {
-    4:  ["loup-garou", "voyante", "villageois", "villageois"],
-    5:  ["loup-garou", "voyante", "sorciere", "villageois", "villageois"],
-    6:  ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "villageois"],
-    7:  ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "villageois", "villageois"],
-    8:  ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois"],
-    9:  ["loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois", "villageois"],
-    10: ["loup-garou", "loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois", "villageois"],
-    11: ["loup-garou", "loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois", "villageois", "villageois"],
-    12: ["loup-garou", "loup-garou", "loup-garou", "voyante", "sorciere", "chasseur", "cupidon", "villageois", "villageois", "villageois", "villageois", "villageois"],
+    4:  ["mafia", "sheriff", "villager", "villager"],
+    5:  ["mafia", "sheriff", "doctor", "villager", "villager"],
+    6:  ["mafia", "mafia", "sheriff", "doctor", "vigilante", "villager"],
+    7:  ["mafia", "mafia", "sheriff", "doctor", "vigilante", "villager", "villager"],
+    8:  ["mafia", "mafia", "sheriff", "doctor", "vigilante", "jester", "villager", "villager"],
+    9:  ["mafia", "mafia", "sheriff", "doctor", "vigilante", "jester", "villager", "villager", "villager"],
+    10: ["mafia", "mafia", "mafia", "sheriff", "doctor", "vigilante", "jester", "villager", "villager", "villager"],
+    11: ["mafia", "mafia", "mafia", "sheriff", "doctor", "vigilante", "jester", "villager", "villager", "villager", "villager"],
+    12: ["mafia", "mafia", "mafia", "sheriff", "doctor", "vigilante", "jester", "villager", "villager", "villager", "villager", "villager"],
 }
 
-# {prénom: "m" | "f"} — genre utilisé pour sélectionner le profil de voix TTS
-FRENCH_NAMES: dict[str, str] = {
-    "Marie": "f", "Pierre": "m", "Sophie": "f", "Jean": "m",
-    "Isabelle": "f", "Thomas": "m", "Camille": "f", "Nicolas": "m",
-    "Lucie": "f", "Antoine": "m", "Emma": "f", "Julien": "m",
-    "Léa": "f", "Maxime": "m", "Clara": "f", "François": "m",
-    "Chloé": "f", "Romain": "m", "Manon": "f", "Gabriel": "m",
+ENGLISH_NAMES: dict[str, str] = {
+    "Alice": "f", "Bob": "m", "Charlie": "m", "Diana": "f",
+    "Edward": "m", "Fiona": "f", "George": "m", "Hannah": "f",
+    "Isaac": "m", "Julia": "f", "Kevin": "m", "Laura": "f",
+    "Michael": "m", "Nancy": "f", "Oscar": "m", "Patricia": "f",
+    "Quinn": "m", "Rachel": "f", "Steven": "m", "Tina": "f",
 }
 
 WIN_CONDITIONS = {
-    "village": "Le village a éliminé tous les loups-garous ! La paix est revenue.",
-    "loups": "Les loups-garous dominent le village ! La nuit est tombée pour toujours.",
-    "amoureux": "Les deux amoureux sont les derniers survivants. Leur amour triomphe de tout !",
+    "town": "The town has eliminated all mafia members! Justice is served.",
+    "mafia": "The mafia has taken over the town! The streets belong to them now.",
+    "jester": "The Jester wins! They played the town perfectly and got voted out.",
 }

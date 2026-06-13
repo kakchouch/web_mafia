@@ -1,42 +1,43 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Loup-Garou</title>
+  <title>Mafia</title>
   <link rel="stylesheet" href="/static/css/style.css"/>
 </head>
 <body>
 
-<!-- ===================== ÉCRAN SETUP ===================== -->
+<!-- ===================== SETUP SCREEN ===================== -->
 <div id="setup-screen" class="screen active">
   <div class="setup-card">
-    <h1>🐺 Loup-Garou</h1>
-    <p class="subtitle">Un village, des secrets, et la nuit qui tombe…</p>
+    <h1>🔫 Mafia</h1>
+    <p class="subtitle">A town, dark secrets, and the night falling…</p>
 
     <div class="mode-toggle">
-      <button id="btn-mode-player" class="mode-btn active" onclick="setMode('player')">🎭 Joueur</button>
-      <button id="btn-mode-spectator" class="mode-btn" onclick="setMode('spectator')">👁 Spectateur</button>
+      <button id="btn-mode-player" class="mode-btn active" onclick="setMode('player')">🎭 Player</button>
+      <button id="btn-mode-spectator" class="mode-btn" onclick="setMode('spectator')">👁 Spectator</button>
     </div>
 
     <div id="player-fields">
-      <label>Votre prénom
-        <input type="text" id="input-name" placeholder="ex: Marie" maxlength="20"/>
+      <label>Your name
+        <input type="text" id="input-name" placeholder="e.g. Alex" maxlength="20"/>
       </label>
 
-      <label>Votre rôle préféré
+      <label>Preferred role
         <select id="input-role">
-          <option value="random">🎲 Aléatoire</option>
-          <option value="villageois">👨‍🌾 Villageois</option>
-          <option value="loup-garou">🐺 Loup-Garou</option>
-          <option value="voyante">🔮 Voyante</option>
-          <option value="sorciere">🧙 Sorcière</option>
-          <option value="chasseur">🏹 Chasseur</option>
+          <option value="random">🎲 Random</option>
+          <option value="villager">👤 Villager</option>
+          <option value="mafia">🔫 Mafia</option>
+          <option value="sheriff">⭐ Sheriff</option>
+          <option value="doctor">💉 Doctor</option>
+          <option value="vigilante">🎯 Vigilante</option>
+          <option value="jester">🃏 Jester</option>
         </select>
       </label>
     </div>
 
-    <label>Nombre de joueurs
+    <label>Number of players
       <div class="slider-row">
         <input type="range" id="input-count"
                min="{{ config.PLAYER_COUNT_MIN }}"
@@ -47,25 +48,25 @@
       </div>
     </label>
 
-    <button id="btn-start" class="btn-primary" onclick="startGame()">Commencer la partie</button>
+    <button id="btn-start" class="btn-primary" onclick="startGame()">Start Game</button>
 
     <div class="setup-links">
       <button class="btn-link" onclick="document.getElementById('rules-modal').classList.add('open')">
-        📖 Règles du jeu
+        📖 Rules
       </button>
-      <button class="btn-link" onclick="openSettings()">⚙️ Réglages</button>
+      <button class="btn-link" onclick="openSettings()">⚙️ Settings</button>
     </div>
   </div>
 </div>
 
-<!-- ===================== ÉCRAN JEU ===================== -->
+<!-- ===================== GAME SCREEN ===================== -->
 <div id="game-screen" class="screen">
   <header class="game-header">
-    <span id="header-phase">Nuit 1</span>
+    <span id="header-phase">Night 1</span>
     <span id="header-role"></span>
     <div class="header-controls">
-      <button id="btn-mute" onclick="TTS.toggleMute()" title="Activer/Couper le son">🔊</button>
-      <label class="speed-label" title="Vitesse des voix">
+      <button id="btn-mute" onclick="TTS.toggleMute()" title="Toggle sound">🔊</button>
+      <label class="speed-label" title="Voice speed">
         🐢
         <input type="range" id="speed-slider" min="0.5" max="2.5" step="0.25" value="1.0"
                oninput="TTS.setSpeed(this.value); document.getElementById('speed-val').textContent = parseFloat(this.value).toFixed(2) + '×'"/>
@@ -77,7 +78,7 @@
   </header>
 
   <div class="game-body">
-    <!-- Log des événements -->
+    <!-- Event log -->
     <div class="log-panel">
       <div id="event-log"></div>
       <div id="typing-indicator" class="typing hidden">
@@ -85,51 +86,51 @@
       </div>
     </div>
 
-    <!-- Sidebar joueurs -->
+    <!-- Players sidebar -->
     <aside class="players-panel">
-      <h3>Vivants</h3>
+      <h3>Alive</h3>
       <ul id="alive-list"></ul>
-      <h3>Morts</h3>
+      <h3>Dead</h3>
       <ul id="dead-list"></ul>
     </aside>
   </div>
 
-  <!-- Panneau d'action -->
+  <!-- Action panel -->
   <div id="action-panel" class="action-panel hidden"></div>
 </div>
 
-<!-- ===================== ÉCRAN FIN ===================== -->
+<!-- ===================== GAME OVER SCREEN ===================== -->
 <div id="gameover-screen" class="screen">
   <div class="gameover-card">
     <div id="gameover-icon"></div>
     <h2 id="gameover-title"></h2>
     <p id="gameover-text"></p>
-    <button class="btn-primary" onclick="location.reload()">Nouvelle partie</button>
+    <button class="btn-primary" onclick="location.reload()">New Game</button>
   </div>
 </div>
 
-<!-- ===================== MODALE RÉGLAGES ===================== -->
+<!-- ===================== SETTINGS MODAL ===================== -->
 <div id="settings-modal" class="modal-overlay" onclick="this.classList.remove('open')">
   <div class="modal-card settings-card" onclick="event.stopPropagation()">
-    <h2>⚙️ Réglages</h2>
-    <div id="settings-content">Chargement…</div>
+    <h2>⚙️ Settings</h2>
+    <div id="settings-content">Loading…</div>
     <div class="settings-actions">
-      <button class="btn-primary" onclick="saveSettings()">💾 Sauvegarder</button>
-      <button class="btn-link" onclick="document.getElementById('settings-modal').classList.remove('open')">Fermer</button>
+      <button class="btn-primary" onclick="saveSettings()">💾 Save</button>
+      <button class="btn-link" onclick="document.getElementById('settings-modal').classList.remove('open')">Close</button>
     </div>
   </div>
 </div>
 
-<!-- ===================== MODALE RÈGLES ===================== -->
+<!-- ===================== RULES MODAL ===================== -->
 <div id="rules-modal" class="modal-overlay" onclick="this.classList.remove('open')">
   <div class="modal-card" onclick="event.stopPropagation()">
-    <h2>📖 Les rôles</h2>
-    <div id="rules-content">Chargement…</div>
-    <button class="btn-link" onclick="document.getElementById('rules-modal').classList.remove('open')">Fermer</button>
+    <h2>📖 Roles</h2>
+    <div id="rules-content">Loading…</div>
+    <button class="btn-link" onclick="document.getElementById('rules-modal').classList.remove('open')">Close</button>
   </div>
 </div>
 
-<!-- ===================== BARRE OLLAMA ===================== -->
+<!-- ===================== OLLAMA BAR ===================== -->
 <div id="ollama-bar">
   <span class="ollama-label">🦙 ollama ps</span>
   <pre id="ollama-output">…</pre>
@@ -138,38 +139,38 @@
 <script src="/static/js/tts.js"></script>
 <script src="/static/js/game.js"></script>
 <script>
-// ===================== RÉGLAGES =====================
+// ===================== SETTINGS =====================
 const SETTINGS_SCHEMA = [
-  { section: "Modèle IA" },
-  { key: "OLLAMA_MODEL",    label: "Modèle Ollama",   type: "text" },
-  { key: "OLLAMA_BASE_URL", label: "URL Ollama",       type: "text" },
-  { key: "OLLAMA_CTX_SIZE", label: "Contexte (tokens)", type: "number", min: 2048, max: 131072 },
+  { section: "AI Model" },
+  { key: "OLLAMA_MODEL",    label: "Ollama Model",     type: "text" },
+  { key: "OLLAMA_BASE_URL", label: "Ollama URL",        type: "text" },
+  { key: "OLLAMA_CTX_SIZE", label: "Context (tokens)",  type: "number", min: 2048, max: 131072 },
 
-  { section: "Partie" },
-  { key: "PLAYER_COUNT_MIN",     label: "Joueurs min",     type: "number", min:2, max:8 },
-  { key: "PLAYER_COUNT_MAX",     label: "Joueurs max",     type: "number", min:4, max:12 },
-  { key: "PLAYER_COUNT_DEFAULT", label: "Joueurs défaut",  type: "number", min:2, max:12 },
-  { key: "DISCUSSION_PASSES",    label: "Passes discussion",type: "number", min:1, max:5 },
+  { section: "Game" },
+  { key: "PLAYER_COUNT_MIN",     label: "Min players",    type: "number", min:2, max:8 },
+  { key: "PLAYER_COUNT_MAX",     label: "Max players",    type: "number", min:4, max:12 },
+  { key: "PLAYER_COUNT_DEFAULT", label: "Default players",type: "number", min:2, max:12 },
+  { key: "DISCUSSION_PASSES",    label: "Discussion passes",type: "number", min:1, max:5 },
 
-  { section: "Timeouts (secondes)" },
-  { key: "TTS_ACK_TIMEOUT",      label: "Attente TTS ACK",  type: "number", min:5,  max:120 },
-  { key: "HUMAN_CHAT_TIMEOUT_1", label: "Chat 1er tour",    type: "number", min:10, max:300 },
-  { key: "HUMAN_CHAT_TIMEOUT_2", label: "Chat 2e tour",     type: "number", min:10, max:300 },
+  { section: "Timeouts (seconds)" },
+  { key: "TTS_ACK_TIMEOUT",      label: "TTS ACK wait",   type: "number", min:5,  max:120 },
+  { key: "HUMAN_CHAT_TIMEOUT_1", label: "Chat round 1",   type: "number", min:10, max:300 },
+  { key: "HUMAN_CHAT_TIMEOUT_2", label: "Chat round 2",   type: "number", min:10, max:300 },
 
-  { section: "IA — Tokens max" },
-  { key: "AI_NARRATION_MAX_TOKENS", label: "Narration",   type: "number", min:50, max:500 },
-  { key: "AI_DIALOGUE_MAX_TOKENS",  label: "Dialogue PNJ",type: "number", min:30, max:300 },
-  { key: "AI_VOTE_MAX_TOKENS",      label: "Vote PNJ",    type: "number", min:5,  max:50  },
-  { key: "AI_WOLF_MAX_TOKENS",      label: "Loups nuit",  type: "number", min:20, max:200 },
+  { section: "AI — Max tokens" },
+  { key: "AI_NARRATION_MAX_TOKENS", label: "Narration",    type: "number", min:50, max:500 },
+  { key: "AI_DIALOGUE_MAX_TOKENS",  label: "NPC dialogue", type: "number", min:30, max:300 },
+  { key: "AI_VOTE_MAX_TOKENS",      label: "NPC vote",     type: "number", min:5,  max:50  },
+  { key: "AI_WOLF_MAX_TOKENS",      label: "Mafia night",  type: "number", min:20, max:200 },
 
-  { section: "IA — Température" },
-  { key: "AI_NARRATION_TEMPERATURE", label: "Narration",   type: "range", min:0, max:1, step:0.05 },
-  { key: "AI_DIALOGUE_TEMPERATURE",  label: "Dialogue PNJ",type: "range", min:0, max:1, step:0.05 },
-  { key: "AI_VOTE_TEMPERATURE",      label: "Vote PNJ",    type: "range", min:0, max:1, step:0.05 },
-  { key: "AI_WOLF_TEMPERATURE",      label: "Loups nuit",  type: "range", min:0, max:1, step:0.05 },
+  { section: "AI — Temperature" },
+  { key: "AI_NARRATION_TEMPERATURE", label: "Narration",    type: "range", min:0, max:1, step:0.05 },
+  { key: "AI_DIALOGUE_TEMPERATURE",  label: "NPC dialogue", type: "range", min:0, max:1, step:0.05 },
+  { key: "AI_VOTE_TEMPERATURE",      label: "NPC vote",     type: "range", min:0, max:1, step:0.05 },
+  { key: "AI_WOLF_TEMPERATURE",      label: "Mafia night",  type: "range", min:0, max:1, step:0.05 },
 
   { section: "TTS Kokoro" },
-  { key: "TTS_NARRATOR_SPEED", label: "Vitesse narrateur", type: "range", min:0.3, max:2, step:0.05 },
+  { key: "TTS_NARRATOR_SPEED", label: "Narrator speed", type: "range", min:0.3, max:2, step:0.05 },
 ];
 
 let _currentConfig = {};
@@ -243,7 +244,6 @@ async function saveSettings() {
     body: JSON.stringify(payload),
   });
   document.getElementById('settings-modal').classList.remove('open');
-  // Mettre à jour le slider joueurs
   const countEl = document.getElementById('input-count');
   if (countEl) {
     if (payload.PLAYER_COUNT_MIN != null) countEl.min = payload.PLAYER_COUNT_MIN;
@@ -260,7 +260,7 @@ async function saveSettings() {
   fetch('/api/ollama/ps')
     .then(r => r.json())
     .then(d => { document.getElementById('ollama-output').textContent = d.output; })
-    .catch(() => { document.getElementById('ollama-output').textContent = 'erreur'; })
+    .catch(() => { document.getElementById('ollama-output').textContent = 'error'; })
     .finally(() => setTimeout(pollOllama, 5000));
 })();
 </script>
