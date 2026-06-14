@@ -18,9 +18,11 @@ class Player:
 
 @dataclass
 class NPCMemory:
-    suspicions: dict = field(default_factory=dict)   # player_id -> float 0.0-1.0
-    known_role: Optional[str] = None                  # sheriff NPC only
+    suspicions: dict = field(default_factory=dict)       # player_id -> float 0.0-1.0
+    known_role: Optional[str] = None                      # last investigation summary (legacy)
     recent_speech: list = field(default_factory=list)
+    investigations: dict = field(default_factory=dict)   # player_name -> "Mafia"/"Innocent" (sheriff only)
+    saves: list = field(default_factory=list)             # player names protected each night (doctor only)
 
 
 class GameState:

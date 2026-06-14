@@ -67,6 +67,30 @@ ENGLISH_NAMES: dict[str, str] = {
     "Quinn": "m", "Rachel": "f", "Steven": "m", "Tina": "f",
 }
 
+# Each name has a fixed personality — two names per profile.
+NAME_PERSONALITY: dict[str, str] = {
+    "Alice":    "manipulative",
+    "Bob":      "aggressive",
+    "Charlie":  "naive",
+    "Diana":    "calculating",
+    "Edward":   "logical",
+    "Fiona":    "emotional",
+    "George":   "discreet",
+    "Hannah":   "leader",
+    "Isaac":    "performer",
+    "Julia":    "anxious",
+    "Kevin":    "aggressive",
+    "Laura":    "calculating",
+    "Michael":  "leader",
+    "Nancy":    "emotional",
+    "Oscar":    "discreet",
+    "Patricia": "manipulative",
+    "Quinn":    "performer",
+    "Rachel":   "logical",
+    "Steven":   "naive",
+    "Tina":     "anxious",
+}
+
 WIN_CONDITIONS = {
     "town": "The town has eliminated all mafia members! Justice is served.",
     "mafia": "The mafia has taken over the town! The streets belong to them now.",

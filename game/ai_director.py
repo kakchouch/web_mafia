@@ -16,7 +16,8 @@ def _native_url() -> str:
     return f"{base}/api/chat"
 
 
-def _call(system: str, user: str, model: str, max_tokens: int, temperature: float) -> str:
+def _call(system: str, user: str, model: str, max_tokens: int,
+          temperature: float, top_p: float = 1.0, top_k: int = 40) -> str:
     payload = {
         "model": model,
         "messages": [
@@ -27,6 +28,8 @@ def _call(system: str, user: str, model: str, max_tokens: int, temperature: floa
         "options": {
             "num_ctx":     int(cfg.get("OLLAMA_CTX_SIZE")),
             "temperature": temperature,
+            "top_p":       top_p,
+            "top_k":       top_k,
             "num_predict": max_tokens,
         },
     }
@@ -131,6 +134,23 @@ NPC_PROFILES: dict[str, str] = {
         "You use dark humor or sarcasm on occasion. "
         "Your tone is expressive, lively, sometimes over the top — but it diverts attention."
     ),
+}
+
+# Sampling params tuned per personality archetype.
+# Low temp + low top_p + low top_k = precise, predictable (logical, discreet, calculating).
+# High temp + high top_p + high top_k = expressive, varied (emotional, performer, naive, aggressive).
+PROFILE_PARAMS: dict[str, dict] = {
+    #                               temp   top_p  top_k
+    "calculating":  {"temperature": 0.50, "top_p": 0.85, "top_k": 25},
+    "aggressive":   {"temperature": 1.20, "top_p": 0.95, "top_k": 70},
+    "anxious":      {"temperature": 1.10, "top_p": 0.92, "top_k": 60},
+    "manipulative": {"temperature": 0.70, "top_p": 0.88, "top_k": 40},
+    "naive":        {"temperature": 1.20, "top_p": 0.98, "top_k": 80},
+    "leader":       {"temperature": 0.60, "top_p": 0.85, "top_k": 35},
+    "discreet":     {"temperature": 0.40, "top_p": 0.80, "top_k": 20},
+    "emotional":    {"temperature": 1.30, "top_p": 0.97, "top_k": 90},
+    "logical":      {"temperature": 0.30, "top_p": 0.75, "top_k": 15},
+    "performer":    {"temperature": 1.30, "top_p": 0.97, "top_k": 90},
 }
 
 # ---------------------------------------------------------------------------
@@ -254,6 +274,7 @@ def narrate(event_description: str, event_log: list[dict] | None = None) -> str:
 # ---------------------------------------------------------------------------
 # NPC dialogue
 # ---------------------------------------------------------------------------
+
 def npc_dialogue(
     npc_name: str,
     npc_role_cover: str,
@@ -268,6 +289,7 @@ def npc_dialogue(
     event_log: list[dict] | None = None,
     is_mafia: bool = False,
     personality: str = "",
+    private_context: str = "",
 ) -> str:
     sus_lines = ", ".join(
         f"{name} (suspicion {int(score * 100)}%)"
@@ -279,11 +301,23 @@ def npc_dialogue(
     history_block = f"\n\nFULL GAME HISTORY:\n{history}" if history else ""
     personality_block = f"\n\n{NPC_PROFILES[personality]}" if personality in NPC_PROFILES else ""
 
+    role_block = f"\n{private_context}" if private_context else ""
+
+    dialogue_guidelines = f"Never refer to yourself in the 3rd or 2nd person, you are {npc_name}. "
+    "ALWAYS speak as yourself using 'I', never refer to yourself in third person."
+    "Never repeat word for word previous messages."
+    "Do not mention any behavior that cannot be deduced by the text-based game history (e.g. eye contacts)."
+    f"Keep in mind there are no two people with the same name. Anywhere {npc_name} is mentionned, YOU are mentionned."
+    "Be human, direct, engaged in the debate."
+
+
+
     system = (
         _NO_MD + "\n\n"
         + _RULES
         + _NPC_STRATEGY
-        + personality_block + "\n\n"
+        + personality_block
+        + role_block + "\n\n"
         f"You are playing {npc_name} in a game of Mafia. "
         f"You claim to be a {npc_role_cover} to the town. "
         f"Alive: {', '.join(alive_names)}. "
@@ -293,8 +327,7 @@ def npc_dialogue(
         "1 to 3 short, natural English sentences. "
         "Accuse, defend yourself, ask someone a pointed question, or call out a living player. "
         "Draw on what others have said and the game history to support your suspicions. "
-        f"Never refer to yourself in the 3rd or 2nd person, you are {npc_name}. "
-        "Be human, direct, engaged in the debate."
+        + dialogue_guidelines
         + history_block
         + "\nREMINDER: nothing has happened outside of the game history."
     )
@@ -311,10 +344,13 @@ def npc_dialogue(
         context_lines.append("Your recent lines: " + " | ".join(recent_speech[-4:]))
     context_lines.append(f"Round {round_num}. What do you say?")
 
+    params = PROFILE_PARAMS.get(personality, {"temperature": float(cfg.get("AI_DIALOGUE_TEMPERATURE")), "top_p": 1.0, "top_k": 40})
     return _call(system=system, user="\n".join(context_lines),
                  model=str(cfg.get("OLLAMA_MODEL")),
                  max_tokens=int(cfg.get("AI_DIALOGUE_MAX_TOKENS")),
-                 temperature=float(cfg.get("AI_DIALOGUE_TEMPERATURE")))
+                 temperature=params["temperature"],
+                 top_p=params["top_p"],
+                 top_k=params["top_k"])
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +366,7 @@ def npc_vote_aloud(
     event_log: list[dict] | None = None,
     is_mafia: bool = False,
     personality: str = "",
+    private_context: str = "",
 ) -> str:
     if not candidates:
         return ""
@@ -344,11 +381,21 @@ def npc_vote_aloud(
     history_block = f"\n\nFULL GAME HISTORY:\n{history}" if history else ""
     personality_block = f"\n\n{NPC_PROFILES[personality]}" if personality in NPC_PROFILES else ""
 
+    role_block = f"\n{private_context}" if private_context else ""
+
+    dialogue_guidelines = f"Never refer to yourself in the 3rd or 2nd person, you are {npc_name}. "
+    "ALWAYS speak as yourself using 'I', never refer to yourself in third person."
+    "Never repeat word for word previous messages."
+    "Do not mention any behavior that cannot be deduced by the text-based game history (e.g. eye contacts)."
+    f"Keep in mind there are no two people with the same name. Anywhere {npc_name} is mentionned, YOU are mentionned."
+    "Be human, direct, engaged in the debate."
+
     system = (
         _NO_MD + "\n\n"
         + _RULES
         + _NPC_STRATEGY
-        + personality_block + "\n\n"
+        + personality_block
+        + role_block + "\n\n"
         f"You are playing {npc_name} (actual role: {npc_role}). "
         f"{ally_hint}"
         f"Dead players (cannot be voted): {'; '.join(dead_events) if dead_events else 'none'}. "
@@ -358,6 +405,9 @@ def npc_vote_aloud(
         "To abstain: begin your statement with 'I abstain' and give a brief reason (not enough evidence, no clear suspect, too risky). "
         "To vote: name your target clearly — their exact name MUST appear in your 1-2 sentence statement — and justify with a concrete argument. "
         "Abstain only when you genuinely lack strong suspicion; abstaining too often looks suspicious."
+        "Keep in mind that if the game involve 8 players or more, a jester might be lurking."
+        "Lynching the jester hands them the win. This outcome is not desirable if you are not the jester yourself."
+        + dialogue_guidelines
         + history_block
     )
 
@@ -366,9 +416,12 @@ def npc_vote_aloud(
         + f"Round {round_num}. Publicly announce your vote and justify it in one or two sentences."
     )
 
+    params = PROFILE_PARAMS.get(personality, {"temperature": float(cfg.get("AI_VOTE_TEMPERATURE")), "top_p": 1.0, "top_k": 40})
     return _call(system=system, user=user, model=str(cfg.get("OLLAMA_MODEL")),
                  max_tokens=int(cfg.get("AI_DIALOGUE_MAX_TOKENS")),
-                 temperature=float(cfg.get("AI_VOTE_TEMPERATURE")))
+                 temperature=params["temperature"],
+                 top_p=params["top_p"],
+                 top_k=params["top_k"])
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +433,7 @@ def mafia_deliberation(
     target_candidates: list[str],
     round_num: int,
     event_log: list[dict] | None = None,
+    personality: str = "",
 ) -> str:
     history = _format_history(event_log or [], is_mafia=True)
     history_block = f"\n\nFULL GAME HISTORY:\n{history}" if history else ""
@@ -394,9 +448,12 @@ def mafia_deliberation(
     )
     user = _NO_MD_REMINDER + f"Night {round_num}. Who should die tonight?"
 
+    params = PROFILE_PARAMS.get(personality, {"temperature": float(cfg.get("AI_WOLF_TEMPERATURE")), "top_p": 1.0, "top_k": 40})
     return _call(system=system, user=user, model=str(cfg.get("OLLAMA_MODEL")),
                  max_tokens=int(cfg.get("AI_WOLF_MAX_TOKENS")),
-                 temperature=float(cfg.get("AI_WOLF_TEMPERATURE")))
+                 temperature=params["temperature"],
+                 top_p=params["top_p"],
+                 top_k=params["top_k"])
 
 
 # ---------------------------------------------------------------------------

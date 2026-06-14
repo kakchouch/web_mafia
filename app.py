@@ -14,8 +14,7 @@ load_dotenv("config.env")
 
 import game.state as gs
 import game.config as gcfg
-from game.ai_director import NPC_PROFILES
-from game.roles import ENGLISH_NAMES, ROLE_CONFIGS, ROLE_POOLS
+from game.roles import ENGLISH_NAMES, NAME_PERSONALITY, ROLE_CONFIGS, ROLE_POOLS
 from game.state import GameState, NPCMemory, Player
 from game.phases import run_night
 
@@ -59,7 +58,6 @@ def _build_game(player_name: str, role_choice: str, player_count: int, mode: str
         players.append(human)
         state.human_id = "human"
 
-    profile_pool = random.sample(list(NPC_PROFILES.keys()), len(NPC_PROFILES))
     for i, role in enumerate(pool):
         npc = Player(
             id=f"p{i+1}",
@@ -68,7 +66,7 @@ def _build_game(player_name: str, role_choice: str, player_count: int, mode: str
             team=ROLE_CONFIGS[role]["team"],
             is_alive=True,
             is_human=False,
-            personality=profile_pool[i % len(profile_pool)],
+            personality=NAME_PERSONALITY.get(names[i], "calculating"),
         )
         players.append(npc)
         mem = NPCMemory()

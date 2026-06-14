@@ -9,6 +9,51 @@ let sseCursor = 0;
 let humanPlayerId = null;
 let allPlayers = [];  // { id, name, is_human }
 
+// -------- Speech to Text (Push-to-Talk) --------
+
+const STT = (() => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return { supported: false, isListening: false, start() {}, stop() {} };
+
+  let _rec = null;
+  let _listening = false;
+
+  return {
+    supported: true,
+    get isListening() { return _listening; },
+
+    start(baseText, onUpdate, onToggle) {
+      if (_listening) return;
+      _rec = new SR();
+      _rec.continuous = true;
+      _rec.interimResults = true;
+      _rec.lang = 'en-US';
+
+      _rec.onresult = (e) => {
+        let finals = '';
+        let interim = '';
+        for (let i = 0; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) finals += t;
+          else interim += t;
+        }
+        onUpdate(baseText + finals, interim);
+      };
+
+      _rec.onend = () => { _listening = false; onToggle(false); };
+      _rec.onerror = () => { _listening = false; onToggle(false); };
+
+      _rec.start();
+      _listening = true;
+      onToggle(true);
+    },
+
+    stop() {
+      if (_rec && _listening) _rec.stop();
+    },
+  };
+})();
+
 // -------- Utilities ---------
 
 function showScreen(id) {
@@ -260,6 +305,7 @@ function _renderActionPanel(action) {
 }
 
 function _hideActionPanel() {
+  if (STT.isListening) STT.stop();
   const panel = document.getElementById('action-panel');
   panel.classList.add('hidden');
   panel.innerHTML = '';
@@ -348,37 +394,83 @@ function _renderChatPanel(panel, action) {
   const chatArea = document.createElement('div');
   chatArea.className = 'chat-area';
 
+  // Left: textarea + interim transcription line
+  const textWrap = document.createElement('div');
+  textWrap.className = 'chat-text-wrap';
+
   const textarea = document.createElement('textarea');
-  textarea.placeholder = 'Say what you think, accuse someone, defend yourself…';
+  textarea.placeholder = 'Type here, or hold 🎤 to speak…';
   textarea.id = 'chat-textarea';
 
+  const interimEl = document.createElement('div');
+  interimEl.className = 'stt-interim';
+
+  textWrap.appendChild(textarea);
+  textWrap.appendChild(interimEl);
+
+  // Right: action buttons
   const actions = document.createElement('div');
   actions.className = 'chat-actions';
+
+  const doSend = () => {
+    const msg = textarea.value.trim();
+    if (STT.isListening) STT.stop();
+    _sendChat(msg);
+  };
+
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
+  });
+
+  // Push-to-talk mic button
+  if (STT.supported) {
+    const btnMic = document.createElement('button');
+    btnMic.className = 'btn-mic';
+    btnMic.title = 'Hold to speak';
+    btnMic.textContent = '🎤';
+
+    const startPTT = () => {
+      if (STT.isListening) return;
+      STT.start(
+        textarea.value,
+        (text, interim) => {
+          textarea.value = text;
+          interimEl.textContent = interim;
+          textarea.scrollTop = textarea.scrollHeight;
+        },
+        (listening) => {
+          btnMic.classList.toggle('recording', listening);
+          if (!listening) interimEl.textContent = '';
+        },
+      );
+    };
+
+    btnMic.addEventListener('mousedown',  (e) => { e.preventDefault(); startPTT(); });
+    btnMic.addEventListener('mouseup',    () => STT.stop());
+    btnMic.addEventListener('mouseleave', () => STT.stop());
+    btnMic.addEventListener('touchstart', (e) => { e.preventDefault(); startPTT(); }, { passive: false });
+    btnMic.addEventListener('touchend',   () => STT.stop());
+
+    actions.appendChild(btnMic);
+  }
 
   const btnSend = document.createElement('button');
   btnSend.className = 'btn-send';
   btnSend.textContent = 'Send';
-  btnSend.onclick = () => {
-    const msg = document.getElementById('chat-textarea').value.trim();
-    if (!msg) return;
-    _sendChat(msg);
-  };
+  btnSend.onclick = doSend;
 
   const btnSkip = document.createElement('button');
   btnSkip.className = 'btn-skip';
   btnSkip.textContent = 'Skip';
-  btnSkip.onclick = () => _sendChat('');
-
-  textarea.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      btnSend.click();
-    }
-  });
+  btnSkip.onclick = () => {
+    if (STT.isListening) STT.stop();
+    _sendChat('');
+  };
 
   actions.appendChild(btnSend);
   actions.appendChild(btnSkip);
-  chatArea.appendChild(textarea);
+
+  chatArea.appendChild(textWrap);
   chatArea.appendChild(actions);
   panel.appendChild(chatArea);
   textarea.focus();

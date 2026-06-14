@@ -109,7 +109,7 @@ def _night_mafia(state: "GameState"):
     for member in mafia:
         if not member.is_human:
             speech = ai.mafia_deliberation(member.name, mafia_names, candidate_names, state.round,
-                                           event_log=state.event_log)
+                                           event_log=state.event_log, personality=member.personality)
             if human_hears_mafia:
                 state.tts_ack_event.clear()
             state.emit({"type": "mafia_private", "visible": "mafia",
@@ -155,6 +155,10 @@ def _night_doctor(state: "GameState", doctor: "Player"):
         return
 
     state.doctor_last_save_id = save_id
+    if not doctor.is_human:
+        mem_doc = state.npc_memories.setdefault(doctor.id, NPCMemory())
+        mem_doc.saves.append(saved.name)
+
     victim_id = state.night_actions.get("mafia_victim")
     if victim_id and victim_id == save_id:
         state.night_actions["doctor_saved"] = True
@@ -177,12 +181,19 @@ def _night_sheriff(state: "GameState", sheriff: "Player"):
         result = state.await_human_action("sheriff_investigate", candidates)
         target_id = result["target_id"] if result else random.choice(candidates).id
     else:
-        mem = state.npc_memories.get(sheriff.id)
-        if mem and mem.suspicions:
-            best = max([(p, mem.suspicions.get(p.id, 0)) for p in candidates], key=lambda x: x[1])
+        mem = state.npc_memories.setdefault(sheriff.id, NPCMemory())
+        # Prefer players not yet investigated; fall back to full candidates list
+        investigated_names = set(mem.investigations.keys())
+        pool = [p for p in candidates if p.name not in investigated_names] or candidates
+        # Among the pool, investigate the most suspicious first
+        if mem.suspicions:
+            best = max(
+                [(p, mem.suspicions.get(p.id, 0.3) + random.uniform(-0.05, 0.05)) for p in pool],
+                key=lambda x: x[1],
+            )
             target_id = best[0].id
         else:
-            target_id = random.choice(candidates).id
+            target_id = random.choice(pool).id
 
     target = state.get_player(target_id)
     if not target:
@@ -196,9 +207,13 @@ def _night_sheriff(state: "GameState", sheriff: "Player"):
                     "text": f"[Sheriff] {target.name} is: {result_text}."})
     else:
         mem = state.npc_memories.setdefault(sheriff.id, NPCMemory())
+        mem.investigations[target.name] = result_text
         mem.known_role = f"{target.name} is {result_text}"
         if target.team == "mafia":
             mem.suspicions[target.id] = 1.0
+        else:
+            # Clear suspicion on confirmed innocents
+            mem.suspicions[target.id] = min(mem.suspicions.get(target.id, 0.0), 0.0)
 
     state.emit({"type": "role_reveal", "visible": "spectator",
                 "target_name": target.name, "role": result_text,
@@ -306,6 +321,61 @@ def _sus_alive(mem, state: "GameState") -> dict[str, float]:
     return result
 
 
+def _npc_private_context(npc: "Player", state: "GameState") -> str:
+    """Return a private role-awareness block injected into NPC prompts."""
+    mem = state.npc_memories.get(npc.id)
+
+    if npc.role == "sheriff":
+        if mem and mem.investigations:
+            findings = "; ".join(f"{name}: {res}" for name, res in mem.investigations.items())
+            return (
+                f"SECRET ROLE — SHERIFF: your private investigation results so far: [{findings}]. "
+                "Use this intel to guide the town toward confirmed mafia members. "
+                "You may reveal your role and findings openly, or steer suspicion subtly to protect yourself — be strategic."
+            )
+        return (
+            "SECRET ROLE — SHERIFF: you haven't investigated anyone yet. "
+            "Act like a villager for now, but pay close attention to behaviour."
+        )
+
+    if npc.role == "doctor":
+        if mem and mem.saves:
+            saved_list = ", ".join(mem.saves[-4:])
+            return (
+                f"SECRET ROLE — DOCTOR: you have protected these players on previous nights: [{saved_list}]. "
+                "Keep your identity secret to stay alive — a dead doctor can't save anyone. "
+                "Don't reveal yourself unless the town is about to vote out someone you know is innocent."
+            )
+        return (
+            "SECRET ROLE — DOCTOR: you haven't saved anyone yet. "
+            "Act like a villager. Protect your identity — you are most valuable alive."
+        )
+
+    if npc.role == "vigilante":
+        if npc.vigilante_shot_used:
+            return (
+                "SECRET ROLE — VIGILANTE: you have already used your one shot. "
+                "Stay quiet about it — you are now a regular voter. Help the town with your reasoning."
+            )
+        return (
+            "SECRET ROLE — VIGILANTE: you have one shot remaining, usable at night. "
+            "Keep your identity secret. Don't reveal yourself prematurely; act like a villager "
+            "until you have near-certain evidence of a mafia member."
+        )
+
+    if npc.role == "jester":
+        return (
+            "SECRET ROLE — JESTER: your ONLY win condition is to be VOTED OUT by the town. "
+            "You must make the town want to eliminate you. "
+            "Say contradictory things, make wild or poorly-reasoned accusations, act evasive or defensive when questioned. "
+            "Be subtly suspicious — not so blatant that people think you're the jester, "
+            "but suspicious enough that they decide to vote you out. "
+            "Never admit you are the jester."
+        )
+
+    return ""
+
+
 def _npc_vote_target(mem, candidates: list) -> "Player | None":
     if not candidates:
         return None
@@ -355,6 +425,7 @@ def _discussion_round(state: "GameState", passes: int = 1,
             event_log=state.event_log,
             is_mafia=(npc.role == "mafia"),
             personality=npc.personality,
+            private_context=_npc_private_context(npc, state),
         )
 
     for _ in range(passes):
@@ -389,6 +460,7 @@ def _run_vote_sequential(state: "GameState"):
 
     def _gen_vote(npc):
         candidates_list = [p for p in alive if p.id != npc.id]
+        mem = state.npc_memories.get(npc.id)
         return ai.npc_vote_aloud(
             npc_name=npc.name,
             npc_role=npc.role,
@@ -400,6 +472,7 @@ def _run_vote_sequential(state: "GameState"):
             event_log=state.event_log,
             is_mafia=(npc.team == "mafia"),
             personality=npc.personality,
+            private_context=_npc_private_context(npc, state),
         )
 
     _ABSTAIN_KEYWORDS = ("i abstain", "abstain", "i pass", "pass my vote", "no vote")
