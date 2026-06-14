@@ -195,6 +195,35 @@ _NO_MD = (
 _NO_MD_REMINDER = "[Reminder: plain prose, zero markdown.]\n"
 
 
+def _dialogue_guidelines(npc_name: str) -> str:
+    return (
+        f"Never refer to yourself in the 3rd or 2nd person, you are {npc_name}. "
+        "ALWAYS speak as yourself using 'I', never refer to yourself in third person. "
+        "Never repeat word for word previous messages. "
+        "Do not mention any behavior that cannot be deduced by the text-based game history (e.g. eye contacts). "
+        f"Keep in mind there are no two people with the same name. Anywhere {npc_name} is mentionned, YOU are mentionned. "
+        "Be human, direct, engaged in the debate."
+    )
+
+
+def _npc_common_blocks(
+    personality: str, private_context: str, event_log: list | None, is_mafia: bool
+) -> tuple[str, str, str]:
+    history = _format_history(event_log or [], is_mafia=is_mafia)
+    history_block = f"\n\nFULL GAME HISTORY:\n{history}" if history else ""
+    personality_block = f"\n\n{NPC_PROFILES[personality]}" if personality in NPC_PROFILES else ""
+    role_block = f"\n{private_context}" if private_context else ""
+    return history_block, personality_block, role_block
+
+
+def _npc_params(personality: str, temp_cfg_key: str) -> dict:
+    return PROFILE_PARAMS.get(personality, {
+        "temperature": float(cfg.get(temp_cfg_key)),
+        "top_p": 1.0,
+        "top_k": 40,
+    })
+
+
 # ---------------------------------------------------------------------------
 # Game history formatter
 # ---------------------------------------------------------------------------
@@ -297,20 +326,8 @@ def npc_dialogue(
         if score > 0.1
     ) or "nobody in particular"
 
-    history = _format_history(event_log or [], is_mafia=is_mafia)
-    history_block = f"\n\nFULL GAME HISTORY:\n{history}" if history else ""
-    personality_block = f"\n\n{NPC_PROFILES[personality]}" if personality in NPC_PROFILES else ""
-
-    role_block = f"\n{private_context}" if private_context else ""
-
-    dialogue_guidelines = f"Never refer to yourself in the 3rd or 2nd person, you are {npc_name}. "
-    "ALWAYS speak as yourself using 'I', never refer to yourself in third person."
-    "Never repeat word for word previous messages."
-    "Do not mention any behavior that cannot be deduced by the text-based game history (e.g. eye contacts)."
-    f"Keep in mind there are no two people with the same name. Anywhere {npc_name} is mentionned, YOU are mentionned."
-    "Be human, direct, engaged in the debate."
-
-
+    history_block, personality_block, role_block = _npc_common_blocks(personality, private_context, event_log, is_mafia)
+    dialogue_guidelines = _dialogue_guidelines(npc_name)
 
     system = (
         _NO_MD + "\n\n"
@@ -344,7 +361,7 @@ def npc_dialogue(
         context_lines.append("Your recent lines: " + " | ".join(recent_speech[-4:]))
     context_lines.append(f"Round {round_num}. What do you say?")
 
-    params = PROFILE_PARAMS.get(personality, {"temperature": float(cfg.get("AI_DIALOGUE_TEMPERATURE")), "top_p": 1.0, "top_k": 40})
+    params = _npc_params(personality, "AI_DIALOGUE_TEMPERATURE")
     return _call(system=system, user="\n".join(context_lines),
                  model=str(cfg.get("OLLAMA_MODEL")),
                  max_tokens=int(cfg.get("AI_DIALOGUE_MAX_TOKENS")),
@@ -377,18 +394,8 @@ def npc_vote_aloud(
         if ally_names else ""
     )
 
-    history = _format_history(event_log or [], is_mafia=is_mafia)
-    history_block = f"\n\nFULL GAME HISTORY:\n{history}" if history else ""
-    personality_block = f"\n\n{NPC_PROFILES[personality]}" if personality in NPC_PROFILES else ""
-
-    role_block = f"\n{private_context}" if private_context else ""
-
-    dialogue_guidelines = f"Never refer to yourself in the 3rd or 2nd person, you are {npc_name}. "
-    "ALWAYS speak as yourself using 'I', never refer to yourself in third person."
-    "Never repeat word for word previous messages."
-    "Do not mention any behavior that cannot be deduced by the text-based game history (e.g. eye contacts)."
-    f"Keep in mind there are no two people with the same name. Anywhere {npc_name} is mentionned, YOU are mentionned."
-    "Be human, direct, engaged in the debate."
+    history_block, personality_block, role_block = _npc_common_blocks(personality, private_context, event_log, is_mafia)
+    dialogue_guidelines = _dialogue_guidelines(npc_name)
 
     system = (
         _NO_MD + "\n\n"
@@ -416,7 +423,7 @@ def npc_vote_aloud(
         + f"Round {round_num}. Publicly announce your vote and justify it in one or two sentences."
     )
 
-    params = PROFILE_PARAMS.get(personality, {"temperature": float(cfg.get("AI_VOTE_TEMPERATURE")), "top_p": 1.0, "top_k": 40})
+    params = _npc_params(personality, "AI_VOTE_TEMPERATURE")
     return _call(system=system, user=user, model=str(cfg.get("OLLAMA_MODEL")),
                  max_tokens=int(cfg.get("AI_DIALOGUE_MAX_TOKENS")),
                  temperature=params["temperature"],
@@ -448,7 +455,7 @@ def mafia_deliberation(
     )
     user = _NO_MD_REMINDER + f"Night {round_num}. Who should die tonight?"
 
-    params = PROFILE_PARAMS.get(personality, {"temperature": float(cfg.get("AI_WOLF_TEMPERATURE")), "top_p": 1.0, "top_k": 40})
+    params = _npc_params(personality, "AI_WOLF_TEMPERATURE")
     return _call(system=system, user=user, model=str(cfg.get("OLLAMA_MODEL")),
                  max_tokens=int(cfg.get("AI_WOLF_MAX_TOKENS")),
                  temperature=params["temperature"],

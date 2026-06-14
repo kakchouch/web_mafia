@@ -332,12 +332,14 @@ def _should_send(evt: dict, mode: str, human_role: str | None, human_team: str |
     if visible == "mafia":
         return human_team == "mafia"
     if visible.startswith("spectator_or_role:"):
-        role = visible.split(":")[1]
-        return human_role == role
-    if visible == "spectator":
-        return False
-    return True
+        return human_role == visible.split(":")[1]
+    return False
 
 
 if __name__ == "__main__":
-    app.run(debug=True, threaded=True, port=5000)
+    app.run(
+        host=str(gcfg.get("FLASK_HOST")),
+        port=int(gcfg.get("FLASK_PORT")),
+        debug=bool(gcfg.get("FLASK_DEBUG")),
+        threaded=True,
+    )

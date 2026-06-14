@@ -1,280 +1,357 @@
-# 🐺 Loup-Garou — Web App en Python
+# 🔫 Mafia — Python Web App
 
-Un jeu de Loup-Garou (Mafia) en français, entièrement jouable dans le navigateur. L'IA (Perplexity) joue tous les personnages non-joueurs, narre la partie en temps réel, et chaque personnage parle à voix haute avec une voix distincte grâce à l'API Web Speech intégrée au navigateur.
+A browser-based Mafia game where a local LLM (via Ollama) plays all NPCs, narrates the game in real time, and speaks every line aloud through Kokoro TTS — no cloud API key required.
 
 ---
 
-## Sommaire
+## Table of contents
 
-- [Fonctionnalités](#fonctionnalités)
-- [Prérequis](#prérequis)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
 - [Installation](#installation)
-- [Lancement](#lancement)
-- [Les rôles](#les-rôles)
-- [Déroulement d'une partie](#déroulement-dune-partie)
-- [Modes de jeu](#modes-de-jeu)
-- [Architecture technique](#architecture-technique)
-- [Structure des fichiers](#structure-des-fichiers)
-- [Configuration avancée](#configuration-avancée)
+- [Running the game](#running-the-game)
+- [Roles](#roles)
+- [Role compositions](#role-compositions)
+- [How a game plays out](#how-a-game-plays-out)
+- [Game modes](#game-modes)
+- [NPC personalities](#npc-personalities)
+- [Technical architecture](#technical-architecture)
+- [File structure](#file-structure)
+- [Advanced configuration](#advanced-configuration)
+  - [Recommended models (Ollama)](#recommended-models-ollama)
 
 ---
 
-## Fonctionnalités
+## Features
 
-- **Jeu complet en français** — narration dramatique, dialogues des PNJ, votes, et fin de partie
-- **IA narrative** — Perplexity génère la narration atmosphérique et les répliques de chaque personnage
-- **TTS multi-voix** — chaque personnage a une voix distincte (Web Speech API, gratuit, aucune installation)
-- **Deux modes** :
-  - **Joueur** : vous incarnez un rôle avec information limitée (secret de votre rôle respecté)
-  - **Spectateur** : vous observez toute la partie, tous les secrets visibles
-- **6 rôles jouables** : Villageois, Loup-Garou, Voyante, Sorcière, Chasseur, Cupidon
-- **Compositions équilibrées** pour 4 à 8 joueurs
-- **Mémoire des PNJ** : les personnages IA accumulent des suspicions au fil des tours
-- **Interface réactive** via Server-Sent Events (SSE) — pas de rechargement de page
-- **100% gratuit** — TTS natif, modèles Perplexity à faible coût
+- **Full Mafia game** — dramatic narration, NPC dialogue, votes, and win conditions
+- **Local AI** — Ollama runs the LLM on your machine; no API key, no cost
+- **Multi-voice TTS** — Kokoro-ONNX gives each character a distinct voice, locally
+- **Push-to-talk speech input** — hold the mic button to speak your dialogue (Chrome/Edge)
+- **Two modes**:
+  - **Player** — you play a role with information limited to what your role can see
+  - **Spectator** — observe the full game with all secrets visible
+- **6 roles**: Villager, Mafia, Sheriff, Doctor, Vigilante, Jester
+- **4 to 12 players** with balanced compositions
+- **NPC memory** — characters accumulate suspicions, track investigations, and remember past saves across rounds
+- **10 distinct NPC personalities** — each name has a fixed personality that shapes LLM sampling and prompt behavior
+- **Reactive interface** via Server-Sent Events (SSE) — no page reloads
 
 ---
 
-## Prérequis
+## Prerequisites
 
 - **Python 3.10+**
-- **Une clé API Perplexity** — obtenir sur [perplexity.ai](https://www.perplexity.ai/settings/api)
-- Un navigateur moderne (Chrome, Edge, Firefox, Safari) pour le TTS
+- **[Ollama](https://ollama.com)** installed and running locally
+- A model pulled, e.g. `ollama pull qwen2.5:14b`
+- A modern browser (Chrome or Edge recommended for push-to-talk; Firefox works without it)
 
 ---
 
 ## Installation
 
 ```bash
-# Cloner ou télécharger le projet
+# Clone the repo
+git clone https://github.com/your-username/mafia.git
 cd mafia
 
-# Installer les dépendances Python
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Download Kokoro TTS model files (~337 MB, one-time)
+python download_models.py
 ```
 
-Puis ouvrir le fichier `api.secret` et y coller votre clé Perplexity :
+Then set your model in [config.env](config.env):
 
+```env
+OLLAMA_MODEL=qwen2.5:14b
 ```
-PERPLEXITY_API_KEY=pplx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+See [Recommended models](#recommended-models-ollama) for guidance on what to pick for your hardware.
+
+**Optional — `api.secret`:** Copy [api.secret.example](api.secret.example) to `api.secret` if you need to set a custom `FLASK_SECRET_KEY` (recommended for network/LAN hosting):
+
+```bash
+cp api.secret.example api.secret
+# then edit api.secret and set FLASK_SECRET_KEY to a long random string
 ```
 
 ---
 
-## Lancement
+## Running the game
 
 ```bash
 python app.py
 ```
 
-Ouvrir ensuite **[http://localhost:5000](http://localhost:5000)** dans le navigateur.
-
-> La première fois que le navigateur parle, il peut demander l'autorisation d'utiliser la synthèse vocale. Acceptez pour profiter du TTS.
+Then open **[http://localhost:5000](http://localhost:5000)** in your browser.
 
 ---
 
-## Les rôles
+## Roles
 
-### 🐺 Loup-Garou — Équipe des Loups
-Chaque nuit, les loups se réveillent et votent secrètement pour dévorer un villageois. Leur objectif : être en nombre égal ou supérieur aux villageois.
+### 🔫 Mafia — Mafia team
+Each night, you and your partners secretly choose a town member to eliminate. During the day, blend in and deflect suspicion.
 
-### 👨‍🌾 Villageois — Équipe du Village
-Aucun pouvoir spécial. Participe aux discussions et aux votes du jour. Doit identifier et éliminer les loups.
+### 👤 Villager — Town team
+No special power. Participate in discussions and vote during the day to root out the mafia.
 
-### 🔮 Voyante — Équipe du Village
-Chaque nuit, peut découvrir la véritable identité d'un joueur. Information précieuse, mais attention à ne pas se dévoiler trop tôt.
+### ⭐ Sheriff — Town team
+Each night, investigate one player to learn whether they are **Mafia** or **Innocent**. Use your findings to guide the town — or keep them secret to protect yourself.
 
-### 🧙 Sorcière — Équipe du Village
-Possède deux potions, chacune utilisable **une seule fois** dans la partie :
-- **Potion de vie** : sauve la victime des loups cette nuit
-- **Potion de mort** : élimine n'importe quel joueur la nuit
+### 💉 Doctor — Town team
+Each night, protect one player from being killed. You cannot protect the same person two nights in a row.
 
-### 🏹 Chasseur — Équipe du Village
-Lorsqu'il est éliminé (de nuit par les loups ou de jour par un vote), peut immédiatement abattre un autre joueur de son choix.
+### 🎯 Vigilante — Town team
+Once per game, shoot a player at night. If your target is innocent, you die of guilt immediately.
 
-### 💘 Cupidon — Équipe du Village
-Agit **uniquement la première nuit** : désigne deux joueurs comme amoureux. Si l'un des deux meurt, l'autre mourra de chagrin immédiatement. Si les deux amoureux sont les derniers survivants, ils gagnent ensemble, même si l'un est un loup.
+### 🃏 Jester — Jester team
+Your **only** win condition is to be voted out by the town. Act suspicious without being so obvious that people realize what you're doing.
 
----
-
-## Composition des équipes
-
-| Joueurs | 🐺 Loups | 🔮 Voyante | 🧙 Sorcière | 🏹 Chasseur | 💘 Cupidon | 👨‍🌾 Villageois |
-|:-------:|:--------:|:----------:|:-----------:|:-----------:|:----------:|:--------------:|
-| 4       | 1        | 1          | —           | —           | —          | 2              |
-| 5       | 1        | 1          | 1           | —           | —          | 2              |
-| 6       | 2        | 1          | 1           | 1           | —          | 1              |
-| 7       | 2        | 1          | 1           | 1           | —          | 2              |
-| 8       | 2        | 1          | 1           | 1           | 1          | 2              |
+> The Jester appears **Innocent** to the Sheriff.
 
 ---
 
-## Déroulement d'une partie
+## Role compositions
 
-### Écran de setup
-1. Choisir votre prénom (mode Joueur) ou activer le mode Spectateur
-2. Sélectionner votre rôle préféré ou laisser sur "Aléatoire"
-3. Régler le nombre de joueurs (4 à 8) avec le curseur
-4. Cliquer sur **Commencer la partie**
-
----
-
-### 🌙 Phase de Nuit
-
-Les joueurs ferment les yeux. Chaque rôle se réveille dans un ordre fixe :
-
-1. **Cupidon** *(première nuit uniquement)* — désigne deux amoureux
-2. **Loups-Garous** — délibèrent et choisissent une victime
-3. **Voyante** — inspecte un joueur
-4. **Sorcière** — décide d'utiliser ou non ses potions
-
-Si c'est **votre** tour d'agir, un panneau d'action apparaît en bas de l'écran avec des boutons à cliquer. Sinon, l'IA résout automatiquement cette étape et vous voyez le résultat dans le journal (si votre rôle vous y donne accès).
+| Players | 🔫 Mafia | ⭐ Sheriff | 💉 Doctor | 🎯 Vigilante | 🃏 Jester | 👤 Villager |
+|:-------:|:--------:|:---------:|:---------:|:------------:|:---------:|:-----------:|
+| 4       | 1        | 1         | —         | —            | —         | 2           |
+| 5       | 1        | 1         | 1         | —            | —         | 2           |
+| 6       | 2        | 1         | 1         | 1            | —         | 1           |
+| 7       | 2        | 1         | 1         | 1            | —         | 2           |
+| 8       | 2        | 1         | 1         | 1            | 1         | 2           |
+| 9       | 2        | 1         | 1         | 1            | 1         | 3           |
+| 10      | 3        | 1         | 1         | 1            | 1         | 3           |
+| 11      | 3        | 1         | 1         | 1            | 1         | 4           |
+| 12      | 3        | 1         | 1         | 1            | 1         | 5           |
 
 ---
 
-### ☀️ Phase de Jour — Discussion
+## How a game plays out
 
-Le matin, le village découvre les morts de la nuit. Les PNJ s'expriment tour à tour, s'accusent, se défendent, réagissent aux événements. Leurs suspicions évoluent selon l'historique de la partie.
-
-**Votre tour de parole** : un champ de texte apparaît. Vous pouvez écrire ce que vous pensez (accusation, défense, bluff…) ou passer votre tour. Les PNJ réagissent à ce que vous dites.
-
----
-
-### 🗳 Phase de Vote
-
-Chaque joueur vivant vote pour éliminer un suspect. Pour vous, un panneau de boutons apparaît avec tous les joueurs vivants (sauf vous-même). Les PNJ votent selon leurs suspicions accumulées. Le joueur ayant le plus de voix est éliminé — en cas d'égalité, le tirage est aléatoire.
-
-Quand un joueur est éliminé, son rôle est révélé à tous.
+### Setup screen
+1. Enter your name (Player mode) or enable Spectator mode
+2. Choose your preferred role, or leave it on Random
+3. Set the number of players (4–12)
+4. Click **Start game**
 
 ---
 
-### Conditions de victoire
+### 🌙 Night phase
 
-| Gagnant       | Condition |
-|---------------|-----------|
-| 🌅 Village    | Tous les loups sont éliminés |
-| 🐺 Loups      | Les loups sont en nombre égal ou supérieur aux villageois |
-| 💕 Amoureux   | Les deux seuls survivants sont les amoureux |
+Each role acts in order: Mafia → Doctor → Sheriff → Vigilante.
+
+When it is **your** turn to act, an action panel appears at the bottom of the screen with target buttons. NPCs resolve their actions automatically.
 
 ---
 
-## Modes de jeu
+### ☀️ Day phase — Discussion
 
-### 🎭 Mode Joueur
-Vous participez activement. Votre information est **strictement limitée à votre rôle** :
-- Un **Villageois** ne voit pas les actions nocturnes (loups, voyante, sorcière)
-- Un **Loup-Garou** voit les délibérations des autres loups la nuit
-- La **Voyante** voit les révélations qu'elle demande
-- La **Sorcière** voit qui a été tué et choisit ses potions
+The town discovers the night's casualties. NPCs speak in turn, accuse each other, defend themselves, and react to events. Their suspicions evolve across rounds based on the full game history.
 
-### 👁 Mode Spectateur
-Vous observez sans jouer. **Tout est visible** : les délibérations des loups, les révélations de la voyante, les décisions de la sorcière. Idéal pour apprendre les mécaniques du jeu, ou regarder une partie se dérouler entièrement par l'IA.
+**Your turn to speak**: a text field (with optional push-to-talk) appears. Write what you think — accusation, defence, bluff — or skip. NPCs react to what you say.
 
 ---
 
-## Architecture technique
+### 🗳 Vote phase
+
+Every living player votes to eliminate a suspect. NPCs speak their vote aloud before casting it. A strict majority is required to eliminate someone; abstentions count against the target.
+
+When a player is eliminated, their role is revealed to everyone.
+
+---
+
+### Win conditions
+
+| Winner      | Condition |
+|-------------|-----------|
+| 🌅 Town     | All mafia members are eliminated |
+| 🔫 Mafia    | Mafia equal or outnumber the remaining town |
+| 🃏 Jester   | The Jester is voted out by the town |
+
+---
+
+## Game modes
+
+### 🎭 Player mode
+You participate actively. Your information is **strictly limited to your role**:
+- A **Villager** does not see night actions
+- A **Mafia** member sees the private deliberations of their partners
+- The **Sheriff** sees the results of their own investigations
+- The **Doctor** sees a confirmation when their save succeeds
+
+### 👁 Spectator mode
+You observe without playing. **Everything is visible**: mafia deliberations, sheriff results, doctor saves. Ideal for watching a fully AI-driven game unfold.
+
+---
+
+## NPC personalities
+
+Each of the 20 NPC names has a fixed personality that is applied consistently across all games. Personality affects both the system prompt and the LLM sampling parameters (temperature, top_p, top_k).
+
+| Personality  | Behaviour |
+|--------------|-----------|
+| calculating  | Cold, precise, cites facts, rarely changes target |
+| aggressive   | Attacks directly, creates confrontations |
+| anxious      | Hesitates, contradicts themselves, seeks reassurance |
+| manipulative | Asks rhetorical questions, turns accusations back on accusers |
+| naive        | Trusts easily, emotional reasoning, easily swayed |
+| leader       | Takes charge, proposes votes, rallies others |
+| discreet     | Speaks rarely but with precision |
+| emotional    | Reacts strongly to deaths, empathy-driven arguments |
+| logical      | Systematic reasoning, references past votes by index |
+| performer    | Theatrical, dramatic, uses dark humour |
+
+---
+
+## Technical architecture
 
 ```
-Navigateur (JS)  ←──SSE──  Flask (Python)  ──→  Perplexity API
-      │                         │
-   Web Speech API            threading
-   (TTS natif)              (jeu en arrière-plan)
+Browser (JS)  ←──SSE──  Flask (Python)  ──→  Ollama (local LLM)
+     │                        │
+  Kokoro TTS              threading
+  (local)             (game runs in background thread)
 ```
 
-### Composants clés
+### Key components
 
 **Backend — Flask**
-- Pas de base de données : l'état du jeu vit entièrement en mémoire Python (`GameState`)
-- Un thread d'arrière-plan orchestre la partie ; les actions du joueur le débloquent via `threading.Event`
-- Le SSE (`/api/events`) streame les événements en temps réel au navigateur
+- No database: game state lives entirely in memory (`GameState`)
+- A background thread runs the game; human actions unblock it via `threading.Event`
+- SSE (`/api/events`) streams events to the browser in real time
 
-**IA — Perplexity API**
-- `sonar-pro` : narration dramatique (peu d'appels, haute qualité)
-- `sonar` : dialogues des PNJ et votes (nombreux appels, faible coût)
-- Les PNJ ont une **mémoire de suspicion** qui persiste d'un tour à l'autre
+**AI — Ollama**
+- All LLM calls go to a local Ollama instance (OpenAI-compatible endpoint)
+- Separate prompts for narration, NPC dialogue, NPC votes, and mafia night deliberation
+- NPCs have persistent memory: suspicions, investigations (sheriff), saves (doctor), recent speech
+- Per-personality sampling params shape each character's output variance
 
-**TTS — Web Speech API**
-- Intégrée au navigateur, gratuite, aucune clé nécessaire
-- Chaque personnage se voit attribuer une voix et des paramètres uniques (pitch, débit)
-- File d'attente FIFO pour enchaîner les répliques sans chevauchement
-- La narration est prioritaire et interrompt les répliques en cours
+**TTS — Kokoro-ONNX**
+- Runs entirely locally, no API key required
+- Each character has a distinct voice assignment
+- FIFO queue ensures lines don't overlap; narration interrupts ongoing speech
 
 ---
 
-## Structure des fichiers
+## File structure
 
 ```
 mafia/
 │
-├── app.py                   Point d'entrée Flask, routes API, générateur SSE
+├── app.py              Flask entry point, API routes, SSE generator
+├── config.env          All configuration (model, temperatures, timeouts, ports)
 │
 ├── game/
 │   ├── __init__.py
-│   ├── state.py             GameState · Player · NPCMemory
-│   ├── roles.py             Définitions des rôles, composition par nb de joueurs
-│   ├── ai_director.py       Client Perplexity : narration, dialogues, votes IA
-│   └── phases.py            Machine d'état : run_night() et run_jour()
+│   ├── state.py        GameState · Player · NPCMemory
+│   ├── roles.py        Role definitions, compositions, NPC names & personalities
+│   ├── ai_director.py  Ollama client: narration, NPC dialogue, votes, mafia deliberation
+│   └── phases.py       Game state machine: run_night() and run_day()
 │
 ├── static/
-│   ├── css/style.css        Thème village sombre (parchemin, or, rouge sang)
+│   ├── css/style.css   Dark town theme (parchment, gold, blood red)
 │   └── js/
-│       ├── tts.js           Web Speech API — voix distinctes, file d'attente
-│       └── game.js          Consommateur SSE, panneaux d'action, sidebar joueurs
+│       ├── tts.js      Kokoro TTS bridge — distinct voices, FIFO queue
+│       └── game.js     SSE consumer, action panels, player sidebar, push-to-talk STT
 │
 ├── templates/
-│   └── index.html           SPA : setup / jeu / fin de partie / modale règles
+│   └── index.html      SPA: setup / game / game over / rules modal
 │
-├── api.secret               Votre clé Perplexity (non commité)
-├── .env.example             Exemple de configuration
+├── models/                 Kokoro model files (gitignored — run download_models.py)
+│   └── .gitkeep
+├── api.secret.example      Template for api.secret (never commit api.secret itself)
+├── download_models.py      One-time Kokoro model downloader
 ├── .gitignore
 └── requirements.txt
 ```
 
 ---
 
-## Configuration avancée
+## Advanced configuration
 
-### Changer le fichier de clé
-La clé est lue depuis `api.secret` à la racine du projet. Format :
-```
-PERPLEXITY_API_KEY=pplx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
+All settings live in [config.env](config.env). No restart required for most changes — restart Flask when changing the model or port.
 
-### Changer le port
-```bash
-# Linux/Mac
-PORT=8080 python app.py
+### Recommended models (Ollama)
 
-# Windows PowerShell
-$env:PORT=8080; python app.py
+Model choice has a large impact on NPC believability — bigger models produce far more convincing dialogue, strategic reasoning, and personality expression. Set your model in [config.env](config.env):
+
+```env
+OLLAMA_MODEL=qwen2.5:14b
+OLLAMA_CTX_SIZE=16384
 ```
 
-Ou modifier directement la dernière ligne de `app.py` :
-```python
-app.run(debug=True, threaded=True, port=8080)
-```
+#### By hardware tier
 
-### Désactiver le mode debug (production)
-Dans `app.py`, remplacer :
-```python
-app.run(debug=True, threaded=True, port=5000)
-```
-par :
-```python
-app.run(debug=False, threaded=True, port=5000)
-```
+| Hardware | VRAM / RAM | Recommended model | Pull command | Notes |
+|----------|------------|-------------------|--------------|-------|
+| Entry GPU / iGPU | 4–6 GB VRAM | `llama3.2:3b` | `ollama pull llama3.2:3b` | Default config. Fast, passable dialogue |
+| | | `qwen2.5:3b` | `ollama pull qwen2.5:3b` | Better instruction-following for the size |
+| Mid-range GPU | 8–12 GB VRAM | `llama3.1:8b` | `ollama pull llama3.1:8b` | Good baseline quality |
+| | | `qwen2.5:7b` | `ollama pull qwen2.5:7b` | Best roleplay and personality for its size |
+| | | `mistral:7b` | `ollama pull mistral:7b` | Solid, fast |
+| High-end GPU | 16–24 GB VRAM | `qwen2.5:14b` ⭐ | `ollama pull qwen2.5:14b` | Recommended sweet spot — noticeably more strategic NPC behaviour |
+| | | `mistral-nemo:12b` | `ollama pull mistral-nemo:12b` | Good alternative |
+| Enthusiast / multi-GPU | 32 GB+ VRAM | `qwen2.5:32b` | `ollama pull qwen2.5:32b` | Excellent reasoning and bluffing |
+| | | `llama3.1:70b` | `ollama pull llama3.1:70b` | Best quality; requires quantization on a single GPU |
+| CPU only | ≥ 32 GB RAM | `llama3.2:3b` | `ollama pull llama3.2:3b` | Only practical option — expect 30–90 s per NPC turn |
 
-### Ajouter des noms de personnages
-Dans [game/roles.py](game/roles.py), modifier la liste `FRENCH_NAMES` pour personnaliser les prénoms des PNJ.
+> **Context size (`OLLAMA_CTX_SIZE`):** The game feeds the full event history into every prompt. `16384` covers most games. Drop to `8192` if VRAM is tight; raise to `32768` for long games with many players. Higher context requires proportionally more VRAM.
+
+> **Speed tip:** NPC turns are sequential, so response latency directly affects pacing. If turns feel slow, drop to a smaller model or reduce `OLLAMA_CTX_SIZE` before changing anything else.
 
 ---
 
-## Dépendances
+### Localhost vs. network hosting
 
-| Package | Usage |
-|---------|-------|
-| `flask` | Serveur web, routes, SSE |
-| `openai` | Client compatible Perplexity API |
-| `python-dotenv` | Chargement des fichiers de configuration |
+`FLASK_HOST` in [config.env](config.env) controls who can reach the server:
 
-Toutes les autres fonctionnalités (TTS, interface) utilisent des APIs natives du navigateur, sans dépendance supplémentaire.
+| Value | Access |
+|-------|--------|
+| `127.0.0.1` | Local machine only (default) |
+| `0.0.0.0` | All network interfaces — other devices on your LAN can connect |
+
+```env
+# Single-player / local use (default)
+FLASK_HOST=127.0.0.1
+
+# LAN / hosted — lets other players connect from the same network
+FLASK_HOST=0.0.0.0
+```
+
+When hosting on `0.0.0.0`, other players connect to your machine's local IP address (e.g. `http://192.168.1.42:5000`). Find it with `ipconfig` (Windows) or `ip a` (Linux/macOS).
+
+> **Security note:** `0.0.0.0` exposes the server to your entire local network. Do not use it on untrusted networks (public Wi-Fi, etc.) without additional protection (firewall, reverse proxy, VPN).
+
+### Change the port
+
+In [config.env](config.env):
+```env
+FLASK_PORT=8080
+```
+
+### Disable debug mode (production)
+
+In [config.env](config.env):
+```env
+FLASK_DEBUG=False
+```
+
+Always disable debug mode when the server is reachable by others — debug mode enables the Werkzeug interactive debugger, which allows arbitrary code execution.
+
+### Add or rename NPC characters
+
+In [game/roles.py](game/roles.py), edit the `ENGLISH_NAMES` dict and the `NAME_PERSONALITY` dict. Each name must map to one of the 10 personality keys.
+
+---
+
+## Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `flask` | Web server, routes, SSE |
+| `openai` | Ollama-compatible API client |
+| `python-dotenv` | Loads `config.env` |
+| `kokoro-onnx` | Local neural TTS engine |
+| `soundfile` | Audio file I/O for Kokoro output |

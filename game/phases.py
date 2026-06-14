@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from game import ai_director as ai
 from game import config as cfg
 from game.roles import NIGHT_ORDER, WIN_CONDITIONS
-from game.state import NPCMemory
+
 
 _executor = ThreadPoolExecutor(max_workers=1)
 
@@ -156,8 +156,7 @@ def _night_doctor(state: "GameState", doctor: "Player"):
 
     state.doctor_last_save_id = save_id
     if not doctor.is_human:
-        mem_doc = state.npc_memories.setdefault(doctor.id, NPCMemory())
-        mem_doc.saves.append(saved.name)
+        state.get_npc_memory(doctor.id).saves.append(saved.name)
 
     victim_id = state.night_actions.get("mafia_victim")
     if victim_id and victim_id == save_id:
@@ -181,7 +180,7 @@ def _night_sheriff(state: "GameState", sheriff: "Player"):
         result = state.await_human_action("sheriff_investigate", candidates)
         target_id = result["target_id"] if result else random.choice(candidates).id
     else:
-        mem = state.npc_memories.setdefault(sheriff.id, NPCMemory())
+        mem = state.get_npc_memory(sheriff.id)
         # Prefer players not yet investigated; fall back to full candidates list
         investigated_names = set(mem.investigations.keys())
         pool = [p for p in candidates if p.name not in investigated_names] or candidates
@@ -206,7 +205,7 @@ def _night_sheriff(state: "GameState", sheriff: "Player"):
                     "target_name": target.name, "role": result_text,
                     "text": f"[Sheriff] {target.name} is: {result_text}."})
     else:
-        mem = state.npc_memories.setdefault(sheriff.id, NPCMemory())
+        mem = state.get_npc_memory(sheriff.id)
         mem.investigations[target.name] = result_text
         mem.known_role = f"{target.name} is {result_text}"
         if target.team == "mafia":
@@ -410,7 +409,7 @@ def _discussion_round(state: "GameState", passes: int = 1,
     last_victim_name = victim.name if (victim and not victim.is_alive) else None
 
     def _gen(npc):
-        mem = state.npc_memories.setdefault(npc.id, NPCMemory())
+        mem = state.get_npc_memory(npc.id)
         return ai.npc_dialogue(
             npc_name=npc.name,
             npc_role_cover="villager",
@@ -435,7 +434,7 @@ def _discussion_round(state: "GameState", passes: int = 1,
                 _executor.submit(_gen, alive_npcs[i + 1])
                 if i + 1 < len(alive_npcs) else None
             )
-            mem = state.npc_memories.setdefault(npc.id, NPCMemory())
+            mem = state.get_npc_memory(npc.id)
             state.tts_ack_event.clear()
             state.emit({"type": "npc_dialogue", "speaker": npc.name,
                         "player_id": npc.id, "text": current})

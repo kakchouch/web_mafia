@@ -96,6 +96,9 @@ class GameState:
         self.pending_action = None
         return result
 
+    def get_npc_memory(self, npc_id: str) -> "NPCMemory":
+        return self.npc_memories.setdefault(npc_id, NPCMemory())
+
     def resolve_human_action(self, action_type: str, target_id: str, extra: dict = None):
         with self._lock:
             if self.pending_action and self.pending_action["type"] == action_type:

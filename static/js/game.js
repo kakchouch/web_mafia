@@ -270,29 +270,37 @@ function _renderActionPanel(action) {
       break;
 
     case 'sheriff_investigate':
-      _renderVotePanel(panel, action, 'sheriff_investigate',
-        '⭐ Sheriff Investigation',
-        'Which player do you want to investigate?');
+      _renderTargetPanel(panel, action.targets, {
+        title: '⭐ Sheriff Investigation',
+        desc: 'Which player do you want to investigate?',
+        actionType: 'sheriff_investigate',
+      });
       break;
 
     case 'doctor_save':
-      _renderDoctorPanel(panel, action);
+      _renderTargetPanel(panel, action.targets, {
+        title: '💉 Doctor — Protect a Player',
+        desc: 'Choose a player to protect tonight.',
+        actionType: 'doctor_save',
+      });
       break;
 
     case 'vigilante_shoot':
-      _renderVigilantePanel(panel, action);
+      _renderTargetPanel(panel, action.targets, {
+        title: '🎯 Vigilante — Use Your Shot',
+        desc: 'You have one shot for the whole game. Choose a target or save it for later.',
+        actionType: 'vigilante_shoot',
+        skipLabel: 'Skip (save shot for later)',
+      });
       break;
 
     case 'vote':
-      _renderVotePanel(panel, action, 'vote',
-        '🗳 Town Vote',
-        'Who do you suspect? A strict majority is required to eliminate.');
-      // Abstain option
-      const btnAbstain = document.createElement('button');
-      btnAbstain.className = 'btn-skip';
-      btnAbstain.textContent = 'Abstain';
-      btnAbstain.onclick = () => _sendAction('vote', '');
-      panel.appendChild(btnAbstain);
+      _renderTargetPanel(panel, action.targets, {
+        title: '🗳 Town Vote',
+        desc: 'Who do you suspect? A strict majority is required to eliminate.',
+        actionType: 'vote',
+        skipLabel: 'Abstain',
+      });
       break;
 
     case 'chat':
@@ -311,7 +319,7 @@ function _hideActionPanel() {
   panel.innerHTML = '';
 }
 
-function _renderVotePanel(panel, action, actionType, title, desc) {
+function _renderTargetPanel(panel, targets, { title, desc, actionType, skipLabel = null, skipValue = '' }) {
   const h3 = document.createElement('h3');
   h3.textContent = title;
   panel.appendChild(h3);
@@ -322,68 +330,22 @@ function _renderVotePanel(panel, action, actionType, title, desc) {
 
   const row = document.createElement('div');
   row.className = 'target-buttons';
-
-  (action.targets || []).forEach(t => {
+  (targets || []).forEach(t => {
     const btn = document.createElement('button');
     btn.className = 'btn-target';
     btn.textContent = t.name;
     btn.onclick = () => _sendAction(actionType, t.id);
     row.appendChild(btn);
   });
-
-  panel.appendChild(row);
-}
-
-function _renderDoctorPanel(panel, action) {
-  const h3 = document.createElement('h3');
-  h3.textContent = '💉 Doctor — Protect a Player';
-  panel.appendChild(h3);
-
-  const p = document.createElement('p');
-  p.textContent = 'Choose a player to protect tonight.';
-  panel.appendChild(p);
-
-  const row = document.createElement('div');
-  row.className = 'target-buttons';
-
-  (action.targets || []).forEach(t => {
-    const btn = document.createElement('button');
-    btn.className = 'btn-target';
-    btn.textContent = t.name;
-    btn.onclick = () => _sendAction('doctor_save', t.id);
-    row.appendChild(btn);
-  });
-
-  panel.appendChild(row);
-}
-
-function _renderVigilantePanel(panel, action) {
-  const h3 = document.createElement('h3');
-  h3.textContent = '🎯 Vigilante — Use Your Shot';
-  panel.appendChild(h3);
-
-  const p = document.createElement('p');
-  p.textContent = 'You have one shot for the whole game. Choose a target or save it for later.';
-  panel.appendChild(p);
-
-  const row = document.createElement('div');
-  row.className = 'target-buttons';
-
-  (action.targets || []).forEach(t => {
-    const btn = document.createElement('button');
-    btn.className = 'btn-target';
-    btn.textContent = t.name;
-    btn.onclick = () => _sendAction('vigilante_shoot', t.id);
-    row.appendChild(btn);
-  });
-
   panel.appendChild(row);
 
-  const btnSkip = document.createElement('button');
-  btnSkip.className = 'btn-skip';
-  btnSkip.textContent = 'Skip (save shot for later)';
-  btnSkip.onclick = () => _sendAction('vigilante_shoot', '');
-  panel.appendChild(btnSkip);
+  if (skipLabel !== null) {
+    const btnSkip = document.createElement('button');
+    btnSkip.className = 'btn-skip';
+    btnSkip.textContent = skipLabel;
+    btnSkip.onclick = () => _sendAction(actionType, skipValue);
+    panel.appendChild(btnSkip);
+  }
 }
 
 function _renderChatPanel(panel, action) {
@@ -478,33 +440,27 @@ function _renderChatPanel(panel, action) {
 
 // -------- Network actions --------
 
-async function _sendAction(actionType, targetId, extra) {
-  _hideActionPanel();
+async function _post(payload) {
   try {
     await fetch('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action_type: actionType, target_id: targetId, extra: extra || {} }),
+      body: JSON.stringify(payload),
     });
   } catch (e) {
     _appendLog(`⚠️ Error: ${e.message}`, 'system');
   }
 }
 
+async function _sendAction(actionType, targetId, extra) {
+  _hideActionPanel();
+  await _post({ action_type: actionType, target_id: targetId, extra: extra || {} });
+}
+
 async function _sendChat(message) {
   _hideActionPanel();
-  if (message) {
-    _appendLog(`<span class="speaker">You</span>: ${message}`, 'npc');
-  }
-  try {
-    await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action_type: 'chat', message: message }),
-    });
-  } catch (e) {
-    _appendLog(`⚠️ Error: ${e.message}`, 'system');
-  }
+  if (message) _appendLog(`<span class="speaker">You</span>: ${message}`, 'npc');
+  await _post({ action_type: 'chat', message });
 }
 
 // -------- Game over --------

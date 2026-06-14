@@ -1,8 +1,16 @@
-.env
+# Secrets — never commit these
 api.secret
+.env
+
+# Kokoro TTS model files — large binaries, download via download_models.py
+models/*.onnx
+models/*.bin
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
+
+# Virtual environments
 .venv/
 venv/
-.env.example

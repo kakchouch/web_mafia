@@ -199,10 +199,6 @@ input[type="range"] {
 
 #btn-mute {
   background: none;
-  border: 1px solid var(--surface2);
-  border-radius: 6px;
-  color: var(--text);
-  cursor: pointer;
   padding: 0.3rem 0.5rem;
   font-size: 1rem;
   transition: border-color 0.2s;
@@ -447,12 +443,15 @@ body { padding-bottom: 2.5rem; }
   gap: 0.5rem;
 }
 
-.btn-target {
-  background: var(--surface2);
+.btn-target, .btn-skip, .btn-witch, .btn-mic, #btn-mute {
   border: 1px solid var(--surface2);
   border-radius: 6px;
   color: var(--text);
   cursor: pointer;
+}
+
+.btn-target {
+  background: var(--surface2);
   padding: 0.45rem 0.9rem;
   font-size: 0.88rem;
   transition: all 0.15s;
@@ -505,10 +504,6 @@ body { padding-bottom: 2.5rem; }
 
 .btn-skip {
   background: transparent;
-  border: 1px solid var(--surface2);
-  border-radius: 6px;
-  color: var(--text);
-  cursor: pointer;
   padding: 0.35rem 0.6rem;
   font-size: 0.78rem;
   opacity: 0.7;
@@ -521,12 +516,8 @@ body { padding-bottom: 2.5rem; }
 }
 
 .btn-witch {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: 1px solid var(--surface2);
   background: var(--surface2);
-  color: var(--text);
-  cursor: pointer;
+  padding: 0.5rem 1rem;
   font-size: 0.88rem;
   transition: all 0.15s;
 }
@@ -721,10 +712,6 @@ body { padding-bottom: 2.5rem; }
 
 .btn-mic {
   background: var(--surface2);
-  border: 1px solid var(--surface2);
-  border-radius: 6px;
-  color: var(--text);
-  cursor: pointer;
   padding: 0.4rem 0.55rem;
   font-size: 1rem;
   line-height: 1;
