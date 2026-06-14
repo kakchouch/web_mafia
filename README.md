@@ -55,6 +55,13 @@ A browser-based Mafia game where a local LLM (via Ollama) plays all NPCs, narrat
 git clone https://github.com/your-username/mafia.git
 cd mafia
 
+# Create and activate a virtual environment (strongly recommended)
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS / Linux:
+# source .venv/bin/activate
+
 # Install Python dependencies
 pip install -r requirements.txt
 
